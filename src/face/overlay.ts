@@ -4,8 +4,11 @@ import type { FaceFrameResult, FaceLandmarkPoint } from './types';
 
 type Connection = { start: number; end: number };
 
-const IRIS_CENTERS = [468, 473] as const;
 const MAX_OVERLAY_DPR = 1.25;
+const MESH_DOT = 2;
+const IRIS_DOT = 3;
+const MESH_POINT_COUNT = 468;
+const TOTAL_POINT_COUNT = 478;
 
 const drawConnections = (
     ctx: CanvasRenderingContext2D,
@@ -28,6 +31,21 @@ const drawConnections = (
     ctx.stroke();
 };
 
+const drawPointLattice = (ctx: CanvasRenderingContext2D, points: FaceLandmarkPoint[]) => {
+    ctx.fillStyle = 'rgba(226, 232, 240, 0.95)';
+    const meshCount = Math.min(MESH_POINT_COUNT, points.length);
+    for (let index = 0; index < meshCount; index += 1) {
+        const point = points[index];
+        ctx.fillRect(point.x - 1, point.y - 1, MESH_DOT, MESH_DOT);
+    }
+    ctx.fillStyle = '#38bdf8';
+    const irisEnd = Math.min(TOTAL_POINT_COUNT, points.length);
+    for (let index = MESH_POINT_COUNT; index < irisEnd; index += 1) {
+        const point = points[index];
+        ctx.fillRect(point.x - 1.5, point.y - 1.5, IRIS_DOT, IRIS_DOT);
+    }
+};
+
 export const drawFaceOverlay = (
     canvas: HTMLCanvasElement,
     result: FaceFrameResult | null,
@@ -42,7 +60,8 @@ export const drawFaceOverlay = (
     if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
     if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
 
-    const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // Plain 2d context only. Extra attrs on a later getContext() return null on some Chrome.
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
@@ -76,15 +95,7 @@ export const drawFaceOverlay = (
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, '#fde68a', 1.4);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, '#38bdf8', 1.8);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, '#38bdf8', 1.8);
-
-        ctx.fillStyle = '#38bdf8';
-        for (const index of IRIS_CENTERS) {
-            const point = points[index];
-            if (!point) continue;
-            ctx.beginPath();
-            ctx.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        drawPointLattice(ctx, points);
 
         const box = face.box;
         const topLeft = mapFramePointToOverlay(box.x * result.frameWidth, box.y * result.frameHeight, mapping);

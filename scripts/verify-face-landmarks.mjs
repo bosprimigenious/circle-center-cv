@@ -62,6 +62,10 @@ const overlay = await import('node:fs/promises').then((fs) => fs.readFile(
     'utf8',
 ));
 if (overlay.includes('FACE_LANDMARKS_TESSELATION')) failures.push('overlay still strokes full tessellation mesh');
+if (overlay.includes('IRIS_CENTERS')) failures.push('overlay still only paints iris centers; 478-point lattice missing');
+if (!overlay.includes('drawPointLattice')) failures.push('overlay missing drawPointLattice for 478-point 点阵');
+if (!overlay.includes('fillRect')) failures.push('点阵 must use fillRect, not 478 arc() calls');
+if (overlay.includes('desynchronized')) failures.push('desynchronized getContext can return null on Windows Chrome');
 if (overlay.includes('../components/CameraView')) failures.push('overlay still imports CameraView');
 if (!source.includes("mode: RunningMode = 'VIDEO'") && !source.includes("= 'VIDEO'")) {
     failures.push('camera landmarker must default to VIDEO at create time');

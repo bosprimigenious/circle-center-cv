@@ -26,7 +26,7 @@
 
 权重和 WASM 在 `npm install` / CI `postinstall` 下载拷贝，不进 git。运行在用户浏览器 GPU（失败则 CPU），没有云端推理。
 
-为 Windows 核显：摄像头 ideal 640×480、检测约 15 fps、叠加只画五官轮廓（不画 ~2600 条三角网格）、`numFaces=1`、DPR 上限 1.25。Chrome 请打开硬件加速。
+为 Windows 核显：摄像头 ideal 640×480、检测约 15 fps、叠加画 478 点阵（fillRect）和五官轮廓，不画 ~2600 条三角网格连线、`numFaces=1`、DPR 上限 1.25。Chrome 请打开硬件加速。
 
 ## 本地运行
 
