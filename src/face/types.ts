@@ -1,3 +1,5 @@
+import type { CheatSnapshot } from '../cheat/types';
+
 export type FaceLandmarkPoint = {
     x: number;
     y: number;
@@ -46,4 +48,5 @@ export type FaceFrameResult = {
     faces: DetectedFace[];
     engine: string;
     error?: string;
+    cheat?: CheatSnapshot | null;
 };

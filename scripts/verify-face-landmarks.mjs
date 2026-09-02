@@ -86,6 +86,7 @@ if (!faceView.includes('video/mp4')) failures.push('FaceView missing video/mp4 a
 if (!faceView.includes("sourceMode === 'image' ? 'IMAGE' : 'VIDEO'")) {
     failures.push('file video must use VIDEO runningMode (detectForVideo), not IMAGE');
 }
+if (!faceView.includes('CheatSession')) failures.push('FaceView missing CheatSession for P2 video signals');
 
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');

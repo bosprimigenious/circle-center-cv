@@ -1,0 +1,76 @@
+import type { CheatScore } from './scoring';
+
+export type GazeDirection = 'left' | 'right';
+
+export type CheatLive = {
+    pitch: number | null;
+    yaw: number | null;
+    gazeX: number | null;
+    mar: number | null;
+    ear: number | null;
+    jawOpen: number | null;
+    headDown: boolean;
+    headTurn: boolean;
+    gazeAway: boolean;
+    gazeDirection: GazeDirection | null;
+    mouthOpen: boolean;
+};
+
+export type CheatSegment = {
+    start: number;
+    end: number;
+    direction?: string;
+};
+
+export type CheatRisk = {
+    text: string;
+    level: 'danger' | 'warn' | 'ok';
+};
+
+export type CheatVideoRes = {
+    covered_ratio: number | null;
+    static_ratio: number | null;
+    sample_count: number;
+    total_frames: number;
+    read_success_count: number;
+    read_failed_count: number;
+    duration: number | null;
+    down_ratio: number | null;
+    away_ratio: number | null;
+    head_turn_ratio: number | null;
+    gaze_engine: string;
+    gaze: {
+        status: string;
+        error: string;
+        down_count: number;
+        away_count: number;
+        head_turn_count: number;
+        face_detected_count: number;
+        no_face_count: number;
+        face_detected_ratio: number | null;
+        no_face_ratio: number | null;
+    };
+    evidence_segments: {
+        head_down: CheatSegment[];
+        gaze_away: CheatSegment[];
+    };
+    quality_flags: string[];
+    risks: CheatRisk[];
+    score: number;
+};
+
+export type CheatSnapshot = {
+    live: CheatLive;
+    video: CheatVideoRes;
+    videoSignals: string[];
+    scored: CheatScore;
+};
+
+export type CheatFrameInput = {
+    tSec: number;
+    landmarks: Array<{ x: number; y: number; z: number }> | null;
+    faceCount: number;
+    jawOpen?: number | null;
+    imageData?: ImageData;
+    forceSample?: boolean;
+};

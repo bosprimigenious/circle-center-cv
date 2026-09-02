@@ -5,6 +5,7 @@ import {
     subscribeFaceEngineStatus,
     warmupFaceLandmarker,
 } from '../../face/landmarker';
+import { CheatSession } from '../../cheat/session';
 import { drawFaceOverlay } from '../../face/overlay';
 import type { FaceFrameResult } from '../../face/types';
 import './FaceView.css';
@@ -32,6 +33,11 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const busyRef = useRef(false);
     const lastDetectAtRef = useRef(0);
     const lastPanelAtRef = useRef(0);
+    const cheatSessionRef = useRef(new CheatSession());
+    const sessionOriginRef = useRef(0);
+    const lastCoveredAtRef = useRef(0);
+    const lastVideoTimeRef = useRef(0);
+    const coveredCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [sourceMode, setSourceMode] = useState<SourceMode>('camera');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -87,6 +93,31 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         objectUrlRef.current = url;
         return url;
     }, [revokeObjectUrl]);
+
+    const resetCheat = useCallback(() => {
+        cheatSessionRef.current.reset();
+        sessionOriginRef.current = performance.now();
+        lastCoveredAtRef.current = 0;
+        lastVideoTimeRef.current = 0;
+    }, []);
+
+    const grabCoveredFrame = useCallback((media: HTMLVideoElement | HTMLImageElement) => {
+        let canvas = coveredCanvasRef.current;
+        if (!canvas) {
+            canvas = document.createElement('canvas');
+            canvas.width = 320;
+            canvas.height = 240;
+            coveredCanvasRef.current = canvas;
+        }
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return undefined;
+        ctx.drawImage(media, 0, 0, 320, 240);
+        return ctx.getImageData(0, 0, 320, 240);
+    }, []);
+
+    useEffect(() => {
+        resetCheat();
+    }, [imageToken, imageUrl, resetCheat, sourceMode, videoUrl]);
 
     const paintOverlay = useCallback(() => {
         const canvas = overlayRef.current;
@@ -167,7 +198,25 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     sourceMode === 'image' ? 'IMAGE' : 'VIDEO',
                     now,
                 );
-                if (!cancelled) publish(next);
+                if (source instanceof HTMLVideoElement) {
+                    if (source.currentTime + 0.5 < lastVideoTimeRef.current) resetCheat();
+                    lastVideoTimeRef.current = source.currentTime;
+                }
+                const tSec = sourceMode === 'video' && source instanceof HTMLVideoElement
+                    ? source.currentTime
+                    : (now - sessionOriginRef.current) / 1000;
+                const forceSample = sourceMode === 'image' || now - lastCoveredAtRef.current >= 2000;
+                if (forceSample) lastCoveredAtRef.current = now;
+                const jawOpen = next.faces[0]?.blendshapes.find((item) => item.name === 'jawOpen')?.score ?? null;
+                const cheat = cheatSessionRef.current.ingest({
+                    tSec,
+                    landmarks: next.faces[0]?.landmarks ?? null,
+                    faceCount: next.faceCount,
+                    jawOpen,
+                    imageData: forceSample ? grabCoveredFrame(source) : undefined,
+                    forceSample,
+                });
+                if (!cancelled) publish({ ...next, cheat });
             } finally {
                 busyRef.current = false;
             }
@@ -189,7 +238,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             cancelled = true;
             window.cancelAnimationFrame(frame);
         };
-    }, [engineReady, imageToken, imageUrl, paintOverlay, publish, sourceMode, videoUrl]);
+    }, [engineReady, grabCoveredFrame, imageToken, imageUrl, paintOverlay, publish, resetCheat, sourceMode, videoUrl]);
 
     useEffect(() => {
         const render = () => paintOverlay();
@@ -224,6 +273,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             setVideoName('未选择');
         }
         revokeObjectUrl();
+        resetCheat();
         setSourceMode(next);
         publish(null, true);
     };
