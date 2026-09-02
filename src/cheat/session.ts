@@ -17,6 +17,8 @@ type Sample = {
     gaze_y: number | null;
     l2cs_yaw: number | null;
     l2cs_pitch: number | null;
+    fused_yaw: number | null;
+    fused_pitch: number | null;
     shoulder_drop: number | null;
     shoulder_yaw: number | null;
     head_down: boolean;
@@ -105,6 +107,8 @@ export class CheatSession {
                 gaze_y: gazeY,
                 l2cs_yaw: l2cs?.yaw ?? null,
                 l2cs_pitch: l2cs?.pitch ?? null,
+                fused_yaw: input.fused?.yaw ?? null,
+                fused_pitch: input.fused?.pitch ?? null,
                 shoulder_drop: input.shoulders?.drop ?? null,
                 shoulder_yaw: input.shoulders?.yaw ?? null,
                 head_down: false,
@@ -117,7 +121,19 @@ export class CheatSession {
 
         const video = this.buildVideoRes();
         const baseline = this.baseline();
-        const live = this.liveFrom(pose, gazeX, gazeY, l2cs, iris, input.shoulders ?? null, mar, ear, jawOpen, baseline);
+        const live = this.liveFrom(
+            pose,
+            gazeX,
+            gazeY,
+            l2cs,
+            iris,
+            input.shoulders ?? null,
+            mar,
+            ear,
+            jawOpen,
+            baseline,
+            input.fused ?? null,
+        );
         const videoSignals = extractVideoSignals(video);
         const scored = computeScore(videoSignals);
         const snapshot: CheatSnapshot = { live, video, videoSignals, scored };
@@ -141,11 +157,24 @@ export class CheatSession {
                 && (sample.shoulder_yaw == null || Math.abs(sample.shoulder_yaw) <= THRESHOLDS.SHOULDER_YAW_DELTA),
         );
         if (shoulderPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) shoulderPool = withShoulders;
+        const withFused = this.samples.filter((sample) => sample.fused_yaw != null);
+        let fusedPool = withFused.filter(
+            (sample) => sample.time <= THRESHOLDS.BASELINE_DURATION_SEC
+                && Math.abs(sample.fused_yaw!) <= THRESHOLDS.L2CS_YAW_AWAY_RAD,
+        );
+        if (fusedPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) fusedPool = withFused;
+        const withL2cs = this.samples.filter((sample) => sample.l2cs_yaw != null);
+        let l2csPool = withL2cs.filter(
+            (sample) => sample.time <= THRESHOLDS.BASELINE_DURATION_SEC
+                && Math.abs(sample.l2cs_yaw!) <= THRESHOLDS.L2CS_YAW_AWAY_RAD,
+        );
+        if (l2csPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) l2csPool = withL2cs;
         return {
             pitch: median(pool.map((sample) => sample.pose?.pitch)),
             yaw: median(pool.map((sample) => sample.pose?.yaw)),
             gaze: median(pool.map((sample) => sample.gaze_x)),
-            l2csYaw: median(pool.map((sample) => sample.l2cs_yaw)),
+            l2csYaw: median(l2csPool.map((sample) => sample.l2cs_yaw)),
+            fusedYaw: median(fusedPool.map((sample) => sample.fused_yaw)),
             shoulderDrop: median(shoulderPool.map((sample) => sample.shoulder_drop)),
             shoulderYaw: median(shoulderPool.map((sample) => sample.shoulder_yaw)),
             poseOk: pool.length >= THRESHOLDS.BASELINE_MIN_SAMPLES && median(pool.map((sample) => sample.pose?.pitch)) != null,
@@ -176,6 +205,7 @@ export class CheatSession {
     private gazeDecision(
         gazeX: number | null,
         l2csYaw: number | null,
+        fusedYaw: number | null,
         baseline: ReturnType<CheatSession['baseline']>,
     ): { away: boolean; direction: GazeDirection | null } {
         let away = false;
@@ -190,8 +220,10 @@ export class CheatSession {
                 direction = 'right';
             }
         }
-        if (baseline.l2csYaw != null && l2csYaw != null) {
-            const delta = l2csYaw - baseline.l2csYaw;
+        const modelYaw = fusedYaw ?? l2csYaw;
+        const modelBase = baseline.fusedYaw ?? baseline.l2csYaw;
+        if (modelBase != null && modelYaw != null) {
+            const delta = modelYaw - modelBase;
             if (Math.abs(delta) > THRESHOLDS.L2CS_YAW_AWAY_RAD) {
                 away = true;
                 direction = delta < 0 ? 'left' : 'right';
@@ -225,7 +257,7 @@ export class CheatSession {
                 sample.head_turn = true;
                 turn += 1;
             }
-            const gaze = this.gazeDecision(sample.gaze_x, sample.l2cs_yaw, baseline);
+            const gaze = this.gazeDecision(sample.gaze_x, sample.l2cs_yaw, sample.fused_yaw, baseline);
             if (gaze.away) {
                 sample.gaze_away = true;
                 sample.gaze_direction = gaze.direction;
@@ -246,9 +278,10 @@ export class CheatSession {
         ear: number | null,
         jawOpen: number | null,
         baseline: ReturnType<CheatSession['baseline']>,
+        fused: { yaw: number; pitch: number } | null,
     ): CheatLive {
         const head = this.headDecision(pose, shoulders, baseline);
-        const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, baseline);
+        const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, fused?.yaw ?? null, baseline);
         return {
             pitch: pose?.pitch ?? null,
             yaw: pose?.yaw ?? null,
@@ -256,6 +289,8 @@ export class CheatSession {
             gazeY,
             l2csYaw: l2cs?.yaw ?? null,
             l2csPitch: l2cs?.pitch ?? null,
+            fusedYaw: fused?.yaw ?? null,
+            fusedPitch: fused?.pitch ?? null,
             irisLeftR: iris.left?.radius ?? null,
             irisRightR: iris.right?.radius ?? null,
             mar,
@@ -265,7 +300,7 @@ export class CheatSession {
             headTurn: head.turn,
             gazeAway: gaze.away,
             gazeDirection: gaze.direction,
-            gazeLook: describeLook(gazeX, gazeY, l2cs),
+            gazeLook: describeLook(gazeX, gazeY, l2cs, fused),
             mouthOpen: (mar != null && mar > 0.45) || (jawOpen != null && jawOpen > 0.35),
             shoulderVisible: shoulders != null,
             shoulderDrop: shoulders?.drop ?? null,

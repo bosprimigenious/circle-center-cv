@@ -1,4 +1,5 @@
 import { FaceLandmarker, type FaceLandmarkerResult } from '@mediapipe/tasks-vision';
+import { eulerFromMatrix } from '../gaze/headPose';
 import { countFaceRegions, emptyRegionCounts, FACE_LANDMARK_COUNT } from './regions';
 import type { DetectedFace, FaceFrameResult, FaceLandmarkPoint } from './types';
 import { resolveVisionFileset } from './visionFileset';
@@ -66,6 +67,7 @@ const toFaces = (result: FaceLandmarkerResult): DetectedFace[] => (
             blendshapes: categories
                 .map((item) => ({ name: item.categoryName, score: item.score }))
                 .sort((a, b) => b.score - a.score),
+            headPose: eulerFromMatrix(result.facialTransformationMatrixes?.[index]),
         };
     })
 );
@@ -107,7 +109,7 @@ const landmarkerOptions = (mode: RunningMode, delegate: 'GPU' | 'CPU', modelAsse
     minFacePresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
     outputFaceBlendshapes: true,
-    outputFacialTransformationMatrixes: false,
+    outputFacialTransformationMatrixes: true,
 });
 
 const createLandmarker = async (delegate: 'GPU' | 'CPU', mode: RunningMode) => {

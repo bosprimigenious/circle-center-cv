@@ -193,8 +193,10 @@ const drawGazeOverlay = (
         if (gaze.leftRay) drawMappedRay(ctx, gaze.leftRay, frameWidth, frameHeight, mapping, '#7dd3fc', 2);
         if (gaze.rightRay) drawMappedRay(ctx, gaze.rightRay, frameWidth, frameHeight, mapping, '#7dd3fc', 2);
         if (gaze.irisRay) drawMappedRay(ctx, gaze.irisRay, frameWidth, frameHeight, mapping, '#38bdf8', 2.4);
-        if (gaze.l2csRay) drawMappedRay(ctx, gaze.l2csRay, frameWidth, frameHeight, mapping, '#fb923c', 2.6);
     }
+    if (gaze.geometricRay) drawMappedRay(ctx, gaze.geometricRay, frameWidth, frameHeight, mapping, '#86efac', 2);
+    if (gaze.l2csRay) drawMappedRay(ctx, gaze.l2csRay, frameWidth, frameHeight, mapping, '#fb923c', 2.2);
+    if (gaze.fusedRay) drawMappedRay(ctx, gaze.fusedRay, frameWidth, frameHeight, mapping, '#f8fafc', 3);
 };
 
 const drawPointLattice = (ctx: CanvasRenderingContext2D, points: FaceLandmarkPoint[]) => {
@@ -288,6 +290,21 @@ export const drawFaceOverlay = (
         ctx.font = '700 11px system-ui, sans-serif';
         ctx.fillText(`脸 ${faceIndex + 1} · ${face.landmarks.length} 点`, topLeft.x + 6, Math.max(20, topLeft.y - 7));
     });
+
+    const look = result.look;
+    if (look && look.level !== 'ok') {
+        const banner = look.reasons.length
+            ? `${look.label} · ${look.reasons.join(' / ')}`
+            : look.label;
+        ctx.fillStyle = look.level === 'danger' ? 'rgba(56, 189, 248, 0.92)' : 'rgba(125, 211, 252, 0.92)';
+        const boxWidth = Math.min(420, width - 24);
+        ctx.fillRect((width - boxWidth) / 2, 12, boxWidth, 28);
+        ctx.fillStyle = '#0f172a';
+        ctx.font = '700 13px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(banner, width / 2, 31);
+        ctx.textAlign = 'start';
+    }
 
     const fatigue = result.fatigue;
     if (fatigue && fatigue.level !== 'ok') {

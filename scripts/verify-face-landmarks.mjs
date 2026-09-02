@@ -90,6 +90,7 @@ if (!faceView.includes('CheatSession')) failures.push('FaceView missing CheatSes
 if (!faceView.includes('detectFrame')) failures.push('FaceView must call the multi-model pipeline');
 if (!faceView.includes('irisGazeFromLandmarks')) failures.push('FaceView missing 眼眶 iris path');
 if (!faceView.includes('FatigueSession')) failures.push('FaceView missing FatigueSession');
+if (!faceView.includes('LookSession')) failures.push('FaceView missing LookSession');
 if (!faceView.includes('疲劳')) failures.push('FaceView HUD must show 疲劳');
 if (!overlay.includes('drawOrbitBox')) failures.push('overlay missing 眼眶 boxes');
 if (!overlay.includes('drawIrisEllipse')) failures.push('overlay missing iris ellipse');

@@ -146,10 +146,15 @@ export const describeLook = (
     gazeX: number | null,
     gazeY: number | null,
     l2cs: L2csGaze | null,
+    fused: L2csGaze | null = null,
 ): string => {
-    // 虹膜优先。L2CS 符号与射线一致：dx=-sin(yaw)、dy=-sin(pitch)，图像 x 右 y 下。
-    const x = gazeX ?? (l2cs ? -Math.sin(l2cs.yaw) : null);
-    const y = gazeY ?? (l2cs ? -Math.sin(l2cs.pitch) : null);
+    // 融合优先；否则虹膜，再 L2CS。符号与射线一致：dx=-sin(yaw)、dy=-sin(pitch)。
+    const x = fused
+        ? -Math.sin(fused.yaw)
+        : (gazeX ?? (l2cs ? -Math.sin(l2cs.yaw) : null));
+    const y = fused
+        ? -Math.sin(fused.pitch)
+        : (gazeY ?? (l2cs ? -Math.sin(l2cs.pitch) : null));
     const parts: string[] = [];
     if (x != null && x < -0.08) parts.push('左');
     else if (x != null && x > 0.08) parts.push('右');

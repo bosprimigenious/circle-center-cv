@@ -1,4 +1,5 @@
 import { detectFaceLandmarks, warmupFaceLandmarker } from './landmarker';
+import { resetGazeFuse } from '../gaze/fuse';
 import { estimateGazeFromBox, warmupGazeEstimator } from '../gaze/l2cs';
 import type { L2csGaze } from '../gaze/types';
 import { detectPoseLandmarks, warmupPoseLandmarker } from '../pose/landmarker';
@@ -12,18 +13,22 @@ export type FrameDetect = {
     face: FaceFrameResult;
     pose: DetectedPose;
     l2cs: L2csGaze | null;
+    l2csAgeMs: number;
 };
 
 const L2CS_INTERVAL_MS = 180;
 
 let lastL2cs: L2csGaze | null = null;
-let lastL2csAt = -Infinity;
+let lastL2csStartedAt = -Infinity;
+let lastL2csResolvedAt = -Infinity;
 let l2csBusy = false;
 
 export const resetPipelineCache = () => {
     lastL2cs = null;
-    lastL2csAt = -Infinity;
+    lastL2csStartedAt = -Infinity;
+    lastL2csResolvedAt = -Infinity;
     l2csBusy = false;
+    resetGazeFuse();
 };
 
 export const warmupVisionPipeline = async () => {
@@ -51,12 +56,13 @@ export const detectFrame = async (
     };
 
     const box = face.faces[0]?.box;
-    const due = mode === 'IMAGE' || (!l2csBusy && timestampMs - lastL2csAt >= L2CS_INTERVAL_MS);
+    const due = mode === 'IMAGE' || (!l2csBusy && timestampMs - lastL2csStartedAt >= L2CS_INTERVAL_MS);
     if (box && due) {
-        lastL2csAt = timestampMs;
+        lastL2csStartedAt = timestampMs;
         if (mode === 'IMAGE') {
             try {
                 lastL2cs = await estimateGazeFromBox(source, box);
+                if (lastL2cs) lastL2csResolvedAt = timestampMs;
             } catch (error) {
                 console.warn('MobileGaze infer failed', error);
             }
@@ -64,7 +70,10 @@ export const detectFrame = async (
             l2csBusy = true;
             void estimateGazeFromBox(source, box)
                 .then((gaze) => {
-                    if (gaze) lastL2cs = gaze;
+                    if (gaze) {
+                        lastL2cs = gaze;
+                        lastL2csResolvedAt = performance.now();
+                    }
                 })
                 .catch((error) => {
                     console.warn('MobileGaze infer failed', error);
@@ -75,5 +84,10 @@ export const detectFrame = async (
         }
     }
 
-    return { face, pose, l2cs: lastL2cs };
+    return {
+        face,
+        pose,
+        l2cs: lastL2cs,
+        l2csAgeMs: lastL2cs ? timestampMs - lastL2csResolvedAt : Number.POSITIVE_INFINITY,
+    };
 };

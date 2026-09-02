@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { eyeAspectRatio, mouthAspectRatio } from '../../cheat/geometry.ts';
 import { CheatSession } from '../../cheat/session';
 import { FatigueSession } from '../../fatigue/session';
+import { fuseGaze } from '../../gaze/fuse';
+import { LookSession } from '../../look/session';
 import { getFaceEngineLabel, subscribeFaceEngineStatus } from '../../face/landmarker';
 import { detectFrame, resetPipelineCache, warmupVisionPipeline } from '../../face/pipeline';
 import { drawFaceOverlay } from '../../face/overlay';
@@ -41,6 +44,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const lastPanelAtRef = useRef(0);
     const cheatSessionRef = useRef(new CheatSession());
     const fatigueSessionRef = useRef(new FatigueSession());
+    const lookSessionRef = useRef(new LookSession());
     const sessionOriginRef = useRef(0);
     const lastCoveredAtRef = useRef(0);
     const lastVideoTimeRef = useRef(0);
@@ -111,6 +115,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const resetCheat = useCallback(() => {
         cheatSessionRef.current.reset();
         fatigueSessionRef.current.reset();
+        lookSessionRef.current.reset();
         sessionOriginRef.current = performance.now();
         lastCoveredAtRef.current = 0;
         lastVideoTimeRef.current = 0;
@@ -209,7 +214,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             lastDetectAtRef.current = now;
             busyRef.current = true;
             try {
-                const { face: next, pose, l2cs } = await detectFrame(
+                const { face: next, pose, l2cs, l2csAgeMs } = await detectFrame(
                     source,
                     sourceMode === 'image' ? 'IMAGE' : 'VIDEO',
                     now,
@@ -235,9 +240,27 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 const blinkRight = face?.blendshapes.find((item) => item.name === 'eyeBlinkRight')?.score;
                 const blinks = [blinkLeft, blinkRight].filter((value): value is number => typeof value === 'number');
                 const eyeBlink = blinks.length ? blinks.reduce((sum, value) => sum + value, 0) / blinks.length : null;
+                const orbitAspects = [iris.left?.orbit, iris.right?.orbit]
+                    .filter((box): box is NonNullable<typeof box> => !!box && box.width > 1e-6)
+                    .map((box) => box.height / box.width);
+                const irisRadii = [iris.left?.radius, iris.right?.radius]
+                    .filter((value): value is number => typeof value === 'number');
+                const ear = face ? eyeAspectRatio(face.landmarks) : null;
+                const mar = face ? mouthAspectRatio(face.landmarks) : null;
+                const orbitAspect = orbitAspects.length ? Math.min(...orbitAspects) : null;
+                const blurryHint = (ear != null && ear < 0.21) || (orbitAspect != null && orbitAspect < 0.28);
+                const fusedGaze = fuseGaze({
+                    head: face?.headPose ?? null,
+                    iris,
+                    l2cs,
+                    l2csAgeMs,
+                    blurry: blurryHint,
+                });
                 const gazeEngine = [
                     'mediapipe-iris-orbit',
                     l2cs ? 'mobilegaze-l2cs' : null,
+                    face?.headPose ? 'face-matrix' : null,
+                    fusedGaze.fused ? 'fused' : null,
                     pose.shoulders ? 'pose-shoulders' : null,
                 ].filter(Boolean).join('+');
                 const cheat = cheatSessionRef.current.ingest({
@@ -248,27 +271,32 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     imageData: forceSample ? grabCoveredFrame(source) : undefined,
                     forceSample,
                     l2cs,
+                    fused: fusedGaze.fused,
                     gazeEngine,
                     shoulders: pose.shoulders
                         ? { drop: pose.shoulders.drop, yaw: pose.shoulders.yaw }
                         : null,
                 });
-                const orbitAspects = [iris.left?.orbit, iris.right?.orbit]
-                    .filter((box): box is NonNullable<typeof box> => !!box && box.width > 1e-6)
-                    .map((box) => box.height / box.width);
-                const irisRadii = [iris.left?.radius, iris.right?.radius]
-                    .filter((value): value is number => typeof value === 'number');
                 const fatigue = fatigueSessionRef.current.ingest({
                     tSec,
-                    ear: cheat.live.ear,
-                    mar: cheat.live.mar,
+                    ear,
+                    mar,
                     jawOpen,
                     eyeBlink,
                     irisRadius: irisRadii.length
                         ? irisRadii.reduce((sum, value) => sum + value, 0) / irisRadii.length
                         : null,
-                    orbitAspect: orbitAspects.length ? Math.min(...orbitAspects) : null,
+                    orbitAspect,
                     headDown: cheat.live.headDown,
+                });
+                const look = lookSessionRef.current.ingest({
+                    tSec,
+                    gazeAway: cheat.live.gazeAway,
+                    gazeDirection: cheat.live.gazeDirection,
+                    headTurn: cheat.live.headTurn,
+                    headDown: cheat.live.headDown,
+                    fusedPitch: fusedGaze.fused?.pitch ?? null,
+                    gazeBlurry: fatigue.gazeBlurry,
                 });
                 const gaze = {
                     leftOrbit: iris.left?.orbit ?? null,
@@ -287,8 +315,12 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     rightRay: rayFromEye(iris.right),
                     irisRay: fusedIrisRay(iris),
                     l2csRay: origin && l2cs ? l2csRayFrom(origin, l2cs) : null,
-                    look: describeLook(iris.gazeX, iris.gazeY, l2cs),
+                    geometricRay: origin && fusedGaze.geometric ? l2csRayFrom(origin, fusedGaze.geometric, 0.24) : null,
+                    fusedRay: origin && fusedGaze.fused ? l2csRayFrom(origin, fusedGaze.fused, 0.32) : null,
+                    look: describeLook(iris.gazeX, iris.gazeY, l2cs, fusedGaze.fused),
                     blurry: fatigue.gazeBlurry,
+                    fused: fusedGaze.fused,
+                    head: face?.headPose ?? null,
                 };
                 if (!cancelled) {
                     publish({
@@ -297,6 +329,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         gaze,
                         pose,
                         fatigue,
+                        look,
                         engine: `${next.engine} · ${pose.engine}`,
                     });
                 }
@@ -339,7 +372,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
         : result
             ? result.faceCount > 0
-                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.gaze?.look ?? ''} · ${result.fatigue?.label ?? ''}`
+                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.look?.label ?? result.gaze?.look ?? ''} · ${result.fatigue?.label ?? ''}`
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 
@@ -498,7 +531,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">
                     <strong>{hud}</strong>
-                    <span>{engine} · 478 + 肩点 + 虹膜射线 + 疲劳</span>
+                    <span>{engine} · 478 + 肩点 + 融合视线 + 第二屏 + 疲劳</span>
                 </div>
             </div>
         </div>

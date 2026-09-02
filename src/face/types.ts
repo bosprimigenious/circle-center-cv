@@ -1,6 +1,8 @@
 import type { CheatSnapshot } from '../cheat/types';
 import type { FatigueLive } from '../fatigue/types';
+import type { HeadPose } from '../gaze/headPose';
 import type { GazeOverlay } from '../gaze/types';
+import type { LookLive } from '../look/types';
 import type { DetectedPose } from '../pose/types';
 
 export type FaceLandmarkPoint = {
@@ -38,6 +40,7 @@ export type DetectedFace = {
     landmarks: FaceLandmarkPoint[];
     box: FaceBox;
     blendshapes: FaceBlendshape[];
+    headPose: HeadPose | null;
 };
 
 export type FaceFrameResult = {
@@ -55,4 +58,5 @@ export type FaceFrameResult = {
     gaze?: GazeOverlay | null;
     pose?: DetectedPose | null;
     fatigue?: FatigueLive | null;
+    look?: LookLive | null;
 };

@@ -49,13 +49,32 @@ export default function App() {
             { label: '肩膀', value: live.shoulderVisible ? `有 · drop ${formatNum(live.shoulderDrop)} / yaw ${formatNum(live.shoulderYaw)}` : '未检出（近景可回退脸部 pitch）' },
             { label: 'pitch / yaw', value: `${formatNum(live.pitch)} / ${formatNum(live.yaw)}` },
             { label: '虹膜 gazeX / Y', value: `${formatNum(live.gazeX)} / ${formatNum(live.gazeY)}` },
+            { label: '头矩阵 yaw / pitch°', value: faceResult?.gaze?.head
+                ? `${formatNum(faceResult.gaze.head.yaw * 180 / Math.PI, 1)} / ${formatNum(faceResult.gaze.head.pitch * 180 / Math.PI, 1)}`
+                : '—' },
             { label: 'L2CS yaw / pitch°', value: `${formatNum(live.l2csYaw != null ? live.l2csYaw * 180 / Math.PI : null, 1)} / ${formatNum(live.l2csPitch != null ? live.l2csPitch * 180 / Math.PI : null, 1)}` },
+            { label: '融合 yaw / pitch°', value: `${formatNum(live.fusedYaw != null ? live.fusedYaw * 180 / Math.PI : null, 1)} / ${formatNum(live.fusedPitch != null ? live.fusedPitch * 180 / Math.PI : null, 1)}` },
             { label: '虹膜半径 左/右', value: `${formatNum(live.irisLeftR, 4)} / ${formatNum(live.irisRightR, 4)}` },
             { label: '嘴部 MAR', value: formatNum(live.mar) },
             { label: '眼 EAR', value: formatNum(live.ear) },
             { label: '张嘴', value: live.mouthOpen ? `是 · jawOpen ${formatNum(live.jawOpen, 2)}` : `否 · ${formatNum(live.jawOpen, 2)}` },
         ];
-    }, [cheat]);
+    }, [cheat, faceResult]);
+
+    const look = faceResult?.look ?? null;
+    const lookRows = useMemo(() => {
+        if (!look) return [];
+        const dir = look.direction === 'left' ? '左' : look.direction === 'right' ? '右' : '—';
+        return [
+            { label: '状态', value: look.label, className: look.level === 'danger' ? 'is-danger' : look.level === 'warn' ? 'is-warn' : 'is-ok' },
+            { label: '原因', value: look.reasons.length ? look.reasons.join(' / ') : '无' },
+            { label: '疑似第二屏', value: look.secondScreen ? `是 · ${dir}` : '否', className: look.secondScreen ? 'is-danger' : '' },
+            { label: '侧向驻留', value: `${formatNum(look.asideSec, 1)}s`, className: look.asideSec >= 2 ? 'is-danger' : look.asideSec >= 0.8 ? 'is-warn' : '' },
+            { label: '转头但仍看镜头', value: look.headTurnButCamera ? '是' : '否' },
+            { label: '转头持续', value: `${formatNum(look.headTurnSec, 1)}s`, className: look.headTurnSec >= 1 ? 'is-warn' : '' },
+            { label: '低头看稿', value: look.notes ? '是' : '否', className: look.notes ? 'is-warn' : '' },
+        ];
+    }, [look]);
 
     const fatigue = faceResult?.fatigue ?? null;
     const fatigueRows = useMemo(() => {
@@ -102,11 +121,11 @@ export default function App() {
         <div className="app-shell">
             <header className="app-header">
                 <div>
-                    <p className="app-kicker">检测 · 478 点 · 肩膀 · 虹膜射线 · 疲劳</p>
-                    <h1>人脸 478 + Pose 肩 + MobileGaze</h1>
+                    <p className="app-kicker">检测 · 478 点 · 肩膀 · 融合视线 · 第二屏 · 疲劳</p>
+                    <h1>人脸 478 + Pose 肩 + 几何×L2CS 融合</h1>
                 </div>
                 <p className="app-note">
-                    同一帧并行三个模型：Face Landmarker 478、Pose Landmarker lite（肩点 11/12 作低头转头参照）、MobileGaze L2CS。疲劳走几何：低头 + EAR/PERCLOS 闭眼 + 眼裂变窄（视线模糊）。不含文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
+                    同一帧并行三个模型：Face Landmarker 478（含 4×4 头部位姿矩阵）、Pose Landmarker lite（肩点 11/12）、MobileGaze L2CS。视线 = 头矩阵 + 虹膜眼内转（每帧几何）与 L2CS 外观加权，再 EMA。转头看肩/头 yaw；盯第二屏看融合视线是否在同一侧停住 ≥2s（低头看稿不算）。疲劳走几何：低头 + EAR/PERCLOS。不含文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
                 </p>
             </header>
             <main className="app-main">
@@ -137,6 +156,19 @@ export default function App() {
                         </>
                     ) : (
                         <p className="panel-empty">等待画面后按约 2 秒采样一次。</p>
+                    )}
+                    <h2>转头 / 第二屏</h2>
+                    {look ? (
+                        <dl>
+                            {lookRows.map((row) => (
+                                <div key={row.label} className="metric">
+                                    <dt>{row.label}</dt>
+                                    <dd className={row.className}>{row.value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    ) : (
+                        <p className="panel-empty">等待画面后按帧累计侧视驻留。摄像头看不见第二块屏，只能从视线停在同一侧推断。</p>
                     )}
                     <h2>疲劳检测</h2>
                     {fatigue ? (

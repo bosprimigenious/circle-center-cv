@@ -10,6 +10,8 @@ import {
 } from '../src/gaze/iris.ts';
 import { gazeXFromLandmarks, gazeYFromLandmarks } from '../src/cheat/geometry.ts';
 import { describeLook, fusedIrisRay, rayFromEye } from '../src/gaze/iris.ts';
+import { APPEARANCE_WEIGHT, fuseGazeInstant, geometricGazeFrom, resetGazeFuse } from '../src/gaze/fuse.ts';
+import { eulerFromMatrix, yawRotationMatrix } from '../src/gaze/headPose.ts';
 import { shouldersFromPose } from '../src/pose/shoulders.ts';
 import { CheatSession } from '../src/cheat/session.ts';
 import { THRESHOLDS } from '../src/cheat/scoring.ts';
@@ -57,6 +59,54 @@ assert.equal(describeLook(0, 0, null), '看镜头');
 assert.equal(describeLook(0.3, 0.2, null), '看右下');
 assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }), '看右');
 assert.equal(describeLook(null, null, { yaw: 0.6, pitch: 0 }), '看左');
+assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }, { yaw: 0.6, pitch: 0 }), '看左');
+
+const identity = eulerFromMatrix({ data: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] });
+assert.ok(identity && Math.abs(identity.yaw) < 1e-9 && Math.abs(identity.pitch) < 1e-9 && Math.abs(identity.roll) < 1e-9, 'identity matrix is zero pose');
+const yaw30 = 30 * Math.PI / 180;
+const fromYaw = eulerFromMatrix({ data: yawRotationMatrix(yaw30) });
+assert.ok(fromYaw && Math.abs(fromYaw.yaw - yaw30) < 1e-6, `pure yaw matrix, got ${fromYaw?.yaw}`);
+assert.ok(fromYaw && Math.abs(fromYaw.pitch) < 1e-6 && Math.abs(fromYaw.roll) < 1e-6, 'pure yaw has no pitch/roll');
+assert.equal(eulerFromMatrix(null), null);
+assert.equal(eulerFromMatrix({ data: [1, 0, 0] }), null);
+
+const head = { yaw: 0.2, pitch: -0.1, roll: 0 };
+const geoCenter = geometricGazeFrom(head, { gazeX: 0, gazeY: 0 }, false);
+assert.ok(geoCenter && Math.abs(geoCenter.yaw - 0.2) < 1e-9 && Math.abs(geoCenter.pitch - -0.1) < 1e-9, 'centered iris follows head');
+const geoRight = geometricGazeFrom(head, { gazeX: 0.2, gazeY: 0 }, false);
+assert.ok(geoRight && geoRight.yaw < geoCenter.yaw, `iris to image-right decreases yaw, ${geoRight?.yaw} vs ${geoCenter?.yaw}`);
+const geoBlurry = geometricGazeFrom(head, { gazeX: 0.2, gazeY: 0.2 }, true);
+assert.ok(geoBlurry && Math.abs(geoBlurry.yaw - head.yaw) < 1e-9 && Math.abs(geoBlurry.pitch - head.pitch) < 1e-9, 'blurry drops iris term');
+
+resetGazeFuse();
+const fusedFresh = fuseGazeInstant({
+    head,
+    iris: { gazeX: 0, gazeY: 0 },
+    l2cs: { yaw: 0.4, pitch: 0 },
+    l2csAgeMs: 0,
+    blurry: false,
+});
+assert.equal(fusedFresh.appearanceWeight, APPEARANCE_WEIGHT);
+const expectedYaw = APPEARANCE_WEIGHT * 0.4 + (1 - APPEARANCE_WEIGHT) * 0.2;
+assert.ok(fusedFresh.fused && Math.abs(fusedFresh.fused.yaw - expectedYaw) < 1e-9, `fresh fuse yaw ${fusedFresh.fused?.yaw}`);
+const fusedStale = fuseGazeInstant({
+    head,
+    iris: { gazeX: 0, gazeY: 0 },
+    l2cs: { yaw: 0.4, pitch: 0 },
+    l2csAgeMs: 500,
+    blurry: false,
+});
+assert.ok(fusedStale.appearanceWeight < APPEARANCE_WEIGHT, 'stale L2CS down-weights appearance');
+assert.ok(fusedStale.fused && Math.abs(fusedStale.fused.yaw - geoCenter.yaw) < Math.abs(fusedFresh.fused.yaw - geoCenter.yaw), 'stale fuse stays closer to geometric');
+const geoOnly = fuseGazeInstant({
+    head,
+    iris: { gazeX: 0, gazeY: 0 },
+    l2cs: null,
+    l2csAgeMs: Number.POSITIVE_INFINITY,
+    blurry: false,
+});
+assert.equal(geoOnly.appearanceWeight, 0);
+assert.deepEqual(geoOnly.fused, geoCenter);
 
 const posePoints = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 1 }));
 posePoints[11] = { x: 0.35, y: 0.55, z: 0, visibility: 0.99 };
@@ -104,31 +154,60 @@ const lookingAside = cheat.ingest({
 });
 assert.equal(lookingAside.live.headTurn, true);
 
+const fusedCheat = new CheatSession();
+for (let index = 0; index < THRESHOLDS.BASELINE_MIN_SAMPLES; index += 1) {
+    fusedCheat.ingest({
+        tSec: index * THRESHOLDS.VIDEO_INTERVAL_SEC,
+        landmarks: points,
+        faceCount: 1,
+        forceSample: true,
+        fused: { yaw: 0, pitch: 0 },
+    });
+}
+const fusedAway = fusedCheat.ingest({
+    tSec: THRESHOLDS.BASELINE_MIN_SAMPLES * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: points,
+    faceCount: 1,
+    forceSample: true,
+    fused: { yaw: THRESHOLDS.L2CS_YAW_AWAY_RAD + 0.05, pitch: 0 },
+});
+assert.equal(fusedAway.live.gazeAway, true);
+assert.equal(fusedAway.live.gazeDirection, 'right');
+assert.ok(fusedAway.live.fusedYaw != null && fusedAway.live.fusedYaw > 0, 'live fused yaw is wired');
+
 const landmarker = await readFile(new URL('../src/face/landmarker.ts', import.meta.url), 'utf8');
 if (!landmarker.includes('FACE_LANDMARK_COUNT')) throw new Error('478 landmarker missing');
-if (landmarker.includes('outputFacialTransformationMatrixes: true')) {
-    throw new Error('do not silently flip 478 landmarker options in this change');
+if (!landmarker.includes('outputFacialTransformationMatrixes: true')) {
+    throw new Error('Face Landmarker must request facialTransformationMatrixes for 3D head pose');
 }
+if (!landmarker.includes('eulerFromMatrix')) throw new Error('landmarker missing eulerFromMatrix');
 
 const overlay = await readFile(new URL('../src/face/overlay.ts', import.meta.url), 'utf8');
 if (!overlay.includes('drawIrisEllipse')) throw new Error('overlay missing iris ellipse');
 if (!overlay.includes('drawOrbitBox')) throw new Error('overlay missing 眼眶 box');
+if (!overlay.includes('fusedRay')) throw new Error('overlay missing fused gaze ray');
+if (!overlay.includes('geometricRay')) throw new Error('overlay missing geometric gaze ray');
 if (overlay.includes('FACE_LANDMARKS_TESSELATION')) throw new Error('tessellation came back');
 
 const faceView = await readFile(new URL('../src/components/FaceView/FaceView.tsx', import.meta.url), 'utf8');
 if (!faceView.includes('detectFrame')) throw new Error('FaceView missing multi-model detectFrame');
 if (!faceView.includes('irisGazeFromLandmarks')) throw new Error('FaceView missing 眼眶 iris');
 if (!faceView.includes('rayFromEye')) throw new Error('FaceView missing iris rays');
+if (!faceView.includes('fuseGaze')) throw new Error('FaceView missing fuseGaze');
 if (!faceView.includes('FatigueSession')) throw new Error('FaceView missing FatigueSession');
+if (!faceView.includes('LookSession')) throw new Error('FaceView missing LookSession');
 
 const pipeline = await readFile(new URL('../src/face/pipeline.ts', import.meta.url), 'utf8');
 if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseLandmarks')) {
     throw new Error('pipeline must call face and pose together');
 }
 if (!pipeline.includes('Promise.all')) throw new Error('pipeline must run models in parallel');
+if (!pipeline.includes('l2csAgeMs')) throw new Error('pipeline must expose L2CS age for fusion');
+if (!pipeline.includes('lastL2csResolvedAt')) throw new Error('L2CS age must use resolve time, not start time');
 
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 if (!app.includes('MobileGaze')) throw new Error('App missing MobileGaze copy');
+if (!app.includes('融合 yaw / pitch°')) throw new Error('App missing fused gaze metric');
 if (!app.includes('疲劳检测')) throw new Error('App missing 疲劳检测 panel');
 if (!app.includes('PERCLOS')) throw new Error('App missing PERCLOS');
 

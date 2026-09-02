@@ -45,6 +45,10 @@ export type GazeOverlay = {
     rightRay: GazeRay | null;
     irisRay: GazeRay | null;
     l2csRay: GazeRay | null;
+    geometricRay: GazeRay | null;
+    fusedRay: GazeRay | null;
     look: string;
     blurry: boolean;
+    fused: L2csGaze | null;
+    head: { yaw: number; pitch: number; roll: number } | null;
 };

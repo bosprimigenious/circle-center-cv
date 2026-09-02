@@ -9,6 +9,8 @@ export type CheatLive = {
     gazeY: number | null;
     l2csYaw: number | null;
     l2csPitch: number | null;
+    fusedYaw: number | null;
+    fusedPitch: number | null;
     irisLeftR: number | null;
     irisRightR: number | null;
     mar: number | null;
@@ -83,6 +85,7 @@ export type CheatFrameInput = {
     imageData?: ImageData;
     forceSample?: boolean;
     l2cs?: { yaw: number; pitch: number } | null;
+    fused?: { yaw: number; pitch: number } | null;
     gazeEngine?: string;
     shoulders?: { drop: number; yaw: number } | null;
 };
