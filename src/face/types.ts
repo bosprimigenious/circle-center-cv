@@ -4,6 +4,8 @@ import type { HeadPose } from '../gaze/headPose';
 import type { GazeOverlay } from '../gaze/types';
 import type { LookLive } from '../look/types';
 import type { DetectedPose } from '../pose/types';
+import type { AvSyncLive } from '../avsync/types';
+import type { SpeechLive } from '../speech/types';
 
 export type FaceLandmarkPoint = {
     x: number;
@@ -59,4 +61,6 @@ export type FaceFrameResult = {
     pose?: DetectedPose | null;
     fatigue?: FatigueLive | null;
     look?: LookLive | null;
+    speech?: SpeechLive | null;
+    avsync?: AvSyncLive | null;
 };

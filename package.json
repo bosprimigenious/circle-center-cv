@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "postinstall": "node scripts/copy-mediapipe.mjs",
-    "verify:face": "node scripts/verify-face-landmarks.mjs && node scripts/verify-cheat-scoring.mjs && node scripts/verify-gaze.mjs && node scripts/verify-fatigue.mjs && node scripts/verify-look.mjs"
+    "verify:face": "node scripts/verify-face-landmarks.mjs && node scripts/verify-cheat-scoring.mjs && node scripts/verify-gaze.mjs && node scripts/verify-fatigue.mjs && node scripts/verify-look.mjs && node scripts/verify-speech.mjs && node scripts/verify-avsync.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.32",

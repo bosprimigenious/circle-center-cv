@@ -306,6 +306,25 @@ export const drawFaceOverlay = (
         ctx.textAlign = 'start';
     }
 
+    const speech = result.speech;
+    if (speech?.speaking) {
+        const speechY = look && look.level !== 'ok' ? 48 : 12;
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.92)';
+        ctx.fillRect(12, speechY, 176, 28);
+        ctx.fillStyle = '#064e3b';
+        ctx.font = '700 13px system-ui, sans-serif';
+        ctx.fillText(speech.label, 22, speechY + 19);
+    }
+
+    const avsync = result.avsync;
+    if (avsync && (avsync.kind === 'lag' || avsync.kind === 'visual_only' || avsync.kind === 'audio_only')) {
+        ctx.fillStyle = avsync.level === 'danger' ? 'rgba(251, 146, 60, 0.92)' : 'rgba(253, 224, 71, 0.92)';
+        ctx.fillRect(12, height - 80, Math.min(260, width - 24), 28);
+        ctx.fillStyle = '#1c1917';
+        ctx.font = '700 13px system-ui, sans-serif';
+        ctx.fillText(avsync.label, 22, height - 61);
+    }
+
     const fatigue = result.fatigue;
     if (fatigue && fatigue.level !== 'ok') {
         const banner = fatigue.reasons.length

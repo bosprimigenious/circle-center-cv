@@ -4,6 +4,9 @@ import { CheatSession } from '../../cheat/session';
 import { FatigueSession } from '../../fatigue/session';
 import { fuseGaze } from '../../gaze/fuse';
 import { LookSession } from '../../look/session';
+import { SpeechSession } from '../../speech/session';
+import { AvSyncSession } from '../../avsync/session';
+import { AudioTap } from '../../avsync/tap';
 import { getFaceEngineLabel, subscribeFaceEngineStatus } from '../../face/landmarker';
 import { detectFrame, resetPipelineCache, warmupVisionPipeline } from '../../face/pipeline';
 import { drawFaceOverlay } from '../../face/overlay';
@@ -45,6 +48,10 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const cheatSessionRef = useRef(new CheatSession());
     const fatigueSessionRef = useRef(new FatigueSession());
     const lookSessionRef = useRef(new LookSession());
+    const speechSessionRef = useRef(new SpeechSession());
+    const avsyncSessionRef = useRef(new AvSyncSession());
+    const audioTapRef = useRef<AudioTap | null>(null);
+    const audioErrorRef = useRef<string | null>(null);
     const sessionOriginRef = useRef(0);
     const lastCoveredAtRef = useRef(0);
     const lastVideoTimeRef = useRef(0);
@@ -116,6 +123,8 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         cheatSessionRef.current.reset();
         fatigueSessionRef.current.reset();
         lookSessionRef.current.reset();
+        speechSessionRef.current.reset();
+        avsyncSessionRef.current.reset();
         sessionOriginRef.current = performance.now();
         lastCoveredAtRef.current = 0;
         lastVideoTimeRef.current = 0;
@@ -166,18 +175,27 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         let cancelled = false;
         if (sourceMode !== 'camera') return undefined;
 
+        const video = {
+            width: { ideal: 640, max: 960 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 20, max: 24 },
+            facingMode: 'user' as const,
+        };
         const start = async () => {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: { ideal: 640, max: 960 },
-                        height: { ideal: 480, max: 720 },
-                        frameRate: { ideal: 20, max: 24 },
-                        facingMode: 'user',
-                    },
-                    audio: false,
-                });
+                audioErrorRef.current = null;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({
+                        video,
+                        audio: { echoCancellation: true, noiseSuppression: true },
+                    });
+                } catch (audioError) {
+                    stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+                    audioErrorRef.current = audioError instanceof Error ? audioError.message : '麦克风不可用';
+                }
                 if (cancelled) return;
+                audioTapRef.current ??= new AudioTap();
+                await audioTapRef.current.attachStream(stream);
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play();
@@ -192,6 +210,8 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         return () => {
             cancelled = true;
             stream?.getTracks().forEach((track) => track.stop());
+            audioTapRef.current?.close();
+            audioTapRef.current = null;
         };
     }, [sourceMode]);
 
@@ -298,6 +318,18 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     fusedPitch: fusedGaze.fused?.pitch ?? null,
                     gazeBlurry: fatigue.gazeBlurry,
                 });
+                const speech = speechSessionRef.current.ingest({
+                    tSec,
+                    mar,
+                    jawOpen,
+                });
+                const avsync = avsyncSessionRef.current.ingest({
+                    tSec,
+                    mar,
+                    visualSpeaking: speech.speaking,
+                    rms: audioTapRef.current?.rms() ?? null,
+                    audioError: audioErrorRef.current,
+                });
                 const gaze = {
                     leftOrbit: iris.left?.orbit ?? null,
                     rightOrbit: iris.right?.orbit ?? null,
@@ -330,6 +362,8 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         pose,
                         fatigue,
                         look,
+                        speech,
+                        avsync,
                         engine: `${next.engine} · ${pose.engine}`,
                     });
                 }
@@ -372,7 +406,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
         : result
             ? result.faceCount > 0
-                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.look?.label ?? result.gaze?.look ?? ''} · ${result.fatigue?.label ?? ''}`
+                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.look?.label ?? result.gaze?.look ?? ''} · ${result.speech?.label ?? ''} · ${result.avsync?.label ?? ''} · ${result.fatigue?.label ?? ''}`
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 
@@ -513,9 +547,15 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                             src={videoUrl}
                             controls
                             playsInline
-                            muted
                             autoPlay
                             loop
+                            onPlay={(event) => {
+                                audioErrorRef.current = null;
+                                audioTapRef.current ??= new AudioTap();
+                                void audioTapRef.current.attachElement(event.currentTarget).catch(() => {
+                                    audioErrorRef.current = '无法读取视频音轨';
+                                });
+                            }}
                             onError={() => {
                                 setVideoError('无法解码该视频。请换成 H.264 编码的 MP4（HEVC/AV1 在部分 Chrome 上播不了）。');
                             }}
@@ -531,7 +571,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">
                     <strong>{hud}</strong>
-                    <span>{engine} · 478 + 肩点 + 融合视线 + 第二屏 + 疲劳</span>
+                    <span>{engine} · 478 + 肩点 + 融合视线 + 第二屏 + 说话 + 音画 + 疲劳</span>
                 </div>
             </div>
         </div>
