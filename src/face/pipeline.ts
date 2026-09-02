@@ -5,6 +5,7 @@ import type { L2csGaze } from '../gaze/types';
 import { detectPoseLandmarks, warmupPoseLandmarker } from '../pose/landmarker';
 import { shouldersFromPose } from '../pose/shoulders';
 import type { DetectedPose } from '../pose/types';
+import { l2csBoxTrusted } from './completeness';
 import type { FaceFrameResult } from './types';
 
 export type RunningMode = 'IMAGE' | 'VIDEO';
@@ -57,7 +58,7 @@ export const detectFrame = async (
 
     const box = face.faces[0]?.box;
     const due = mode === 'IMAGE' || (!l2csBusy && timestampMs - lastL2csStartedAt >= L2CS_INTERVAL_MS);
-    if (box && due) {
+    if (box && due && l2csBoxTrusted(box)) {
         lastL2csStartedAt = timestampMs;
         if (mode === 'IMAGE') {
             try {

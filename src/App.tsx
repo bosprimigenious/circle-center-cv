@@ -35,6 +35,9 @@ export default function App() {
         const gaze = video.gaze;
         return [
             { label: '遮挡率', value: formatPct(video.covered_ratio), className: ratioClass(video.covered_ratio, 0.5, 0.3) },
+            { label: '人脸完整', value: live.faceQualityLabel || '—', className: live.faceClipped || live.handOverFace ? 'is-warn' : live.irisTrusted ? '' : 'is-warn' },
+            { label: '虹膜可信', value: live.irisTrusted ? '是' : '否', className: live.irisTrusted ? '' : 'is-warn' },
+            { label: '手挡脸', value: live.handOverFace ? '是' : '否', className: live.handOverFace ? 'is-danger' : '' },
             { label: '静止率', value: formatPct(video.static_ratio), className: ratioClass(video.static_ratio, 0.99, 0.5) },
             { label: '无人脸率', value: formatPct(gaze.no_face_ratio), className: ratioClass(gaze.no_face_ratio, 0.5) },
             { label: '低头率', value: formatPct(video.down_ratio), className: ratioClass(video.down_ratio, 0.3, 0.15) },
@@ -46,7 +49,7 @@ export default function App() {
             { label: '本帧转头', value: live.headTurn ? '是' : '否', className: live.headTurn ? 'is-warn' : '' },
             { label: '本帧侧视', value: live.gazeAway ? (live.gazeDirection ?? '是') : '否', className: live.gazeAway ? 'is-warn' : '' },
             { label: '眼神看哪', value: live.gazeLook, className: live.gazeLook !== '看镜头' ? 'is-warn' : '' },
-            { label: '肩膀', value: live.shoulderVisible ? `有 · drop ${formatNum(live.shoulderDrop)} / yaw ${formatNum(live.shoulderYaw)}` : '未检出（近景可回退脸部 pitch）' },
+            { label: '肩膀', value: live.shoulderVisible ? `有 · drop ${formatNum(live.shoulderDrop)} / yaw ${formatNum(live.shoulderYaw)}` : (live.pitchTrusted ? '未检出（近景可回退脸部 pitch）' : '未检出 · 脸不全，低头不采信脸部点') },
             { label: 'pitch / yaw', value: `${formatNum(live.pitch)} / ${formatNum(live.yaw)}` },
             { label: '虹膜 gazeX / Y', value: `${formatNum(live.gazeX)} / ${formatNum(live.gazeY)}` },
             { label: '头矩阵 yaw / pitch°', value: faceResult?.gaze?.head

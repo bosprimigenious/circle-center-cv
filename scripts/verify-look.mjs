@@ -84,6 +84,25 @@ const flipped = runFor(resetDir, 1.6, 2.4, 0.1, { gazeAway: true, gazeDirection:
 assert.equal(flipped.secondScreen, false, 'direction flip restarts dwell');
 assert.equal(flipped.direction, 'right');
 
+const occluded = new LookSession();
+const occludedLive = runFor(occluded, 0, 2.1, 0.1, {
+    gazeAway: true,
+    gazeDirection: 'left',
+    gazeUnreliable: true,
+});
+assert.equal(occludedLive.secondScreen, false, 'unreliable gaze must not count as second screen');
+assert.equal(occludedLive.kind, 'camera');
+
+const paused = new LookSession();
+runFor(paused, 0, 1.0, 0.1, { gazeAway: true, gazeDirection: 'left' });
+const pausedLive = runFor(paused, 1.1, 2.5, 0.1, {
+    gazeAway: true,
+    gazeDirection: 'left',
+    gazeUnreliable: true,
+});
+assert.equal(pausedLive.secondScreen, false, 'occlusion must freeze aside dwell, not extend it');
+assert.ok(pausedLive.asideSec < LOOK_THRESHOLDS.DWELL_SEC, `frozen asideSec ${pausedLive.asideSec}`);
+
 assert.deepEqual(
     extractVideoSignals({ covered_ratio: 0, static_ratio: 0, down_ratio: 0, gaze: { no_face_ratio: 0 } }),
     [],

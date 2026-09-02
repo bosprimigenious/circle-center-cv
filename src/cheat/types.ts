@@ -25,6 +25,12 @@ export type CheatLive = {
     shoulderVisible: boolean;
     shoulderDrop: number | null;
     shoulderYaw: number | null;
+    faceQualityLabel: string;
+    pitchTrusted: boolean;
+    yawTrusted: boolean;
+    irisTrusted: boolean;
+    handOverFace: boolean;
+    faceClipped: boolean;
 };
 
 export type CheatSegment = {
@@ -88,4 +94,13 @@ export type CheatFrameInput = {
     fused?: { yaw: number; pitch: number } | null;
     gazeEngine?: string;
     shoulders?: { drop: number; yaw: number } | null;
+    quality?: {
+        pitchTrusted: boolean;
+        yawTrusted: boolean;
+        irisTrusted: boolean;
+        l2csTrusted: boolean;
+        handOverFace?: boolean;
+        clipped?: boolean;
+        label?: string;
+    } | null;
 };

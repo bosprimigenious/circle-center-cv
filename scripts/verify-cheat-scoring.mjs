@@ -63,8 +63,20 @@ points[13] = { x: 0.5, y: 0.62, z: 0 };
 points[14] = { x: 0.5, y: 0.72, z: 0 };
 points[61] = { x: 0.4, y: 0.67, z: 0 };
 points[291] = { x: 0.6, y: 0.67, z: 0 };
-for (const index of PERSON_RIGHT_IRIS) points[index] = { x: 0.4, y: 0.4, z: 0 };
-for (const index of PERSON_LEFT_IRIS) points[index] = { x: 0.6, y: 0.4, z: 0 };
+const plantIris = (irisIdx, cx, cy, radius = 0.012) => {
+    const ring = [
+        [cx, cy],
+        [cx + radius, cy],
+        [cx, cy + radius],
+        [cx - radius, cy],
+        [cx, cy - radius],
+    ];
+    irisIdx.forEach((index, offset) => {
+        points[index] = { x: ring[offset][0], y: ring[offset][1], z: 0 };
+    });
+};
+plantIris(PERSON_RIGHT_IRIS, 0.4, 0.4);
+plantIris(PERSON_LEFT_IRIS, 0.6, 0.4);
 
 const pose = poseFromLandmarks(points);
 assert.ok(pose);

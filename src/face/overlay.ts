@@ -175,8 +175,8 @@ const drawGazeOverlay = (
     mapping: OverlayFitMapping,
 ) => {
     const mapPt = (x: number, y: number) => mapFramePointToOverlay(x * frameWidth, y * frameHeight, mapping);
-    const orbitColor = gaze.blurry ? '#fbbf24' : '#4ade80';
-    const irisColor = gaze.blurry ? '#f59e0b' : '#38bdf8';
+    const orbitColor = gaze.unreliable ? '#fb7185' : gaze.blurry ? '#fbbf24' : '#4ade80';
+    const irisColor = gaze.unreliable ? '#fb7185' : gaze.blurry ? '#f59e0b' : '#38bdf8';
     if (gaze.leftOrbit) drawOrbitBox(ctx, mapBox(gaze.leftOrbit, frameWidth, frameHeight, mapping), orbitColor);
     if (gaze.rightOrbit) drawOrbitBox(ctx, mapBox(gaze.rightOrbit, frameWidth, frameHeight, mapping), orbitColor);
     const scaleX = mapping.scaleX * frameWidth;
@@ -281,14 +281,20 @@ export const drawFaceOverlay = (
             (box.y + box.height) * result.frameHeight,
             mapping,
         );
-        ctx.strokeStyle = 'rgba(186, 230, 253, 0.85)';
-        ctx.lineWidth = 1.2;
+        const quality = faceIndex === 0 ? result.quality : null;
+        const boxBad = !!quality && (quality.clipped || quality.handOverFace);
+        ctx.strokeStyle = boxBad ? 'rgba(251, 113, 133, 0.95)' : 'rgba(186, 230, 253, 0.85)';
+        ctx.lineWidth = boxBad ? 2 : 1.2;
         ctx.strokeRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y);
-        ctx.fillStyle = 'rgba(8, 47, 73, 0.78)';
-        ctx.fillRect(topLeft.x, Math.max(8, topLeft.y - 20), 128, 18);
-        ctx.fillStyle = '#e0f2fe';
+        const caption = quality && quality.label !== '完整'
+            ? `脸 ${faceIndex + 1} · ${quality.label}`
+            : `脸 ${faceIndex + 1} · ${face.landmarks.length} 点`;
+        const captionWidth = Math.min(280, Math.max(128, caption.length * 9 + 16));
+        ctx.fillStyle = boxBad ? 'rgba(127, 29, 29, 0.82)' : 'rgba(8, 47, 73, 0.78)';
+        ctx.fillRect(topLeft.x, Math.max(8, topLeft.y - 20), captionWidth, 18);
+        ctx.fillStyle = boxBad ? '#fecaca' : '#e0f2fe';
         ctx.font = '700 11px system-ui, sans-serif';
-        ctx.fillText(`脸 ${faceIndex + 1} · ${face.landmarks.length} 点`, topLeft.x + 6, Math.max(20, topLeft.y - 7));
+        ctx.fillText(caption, topLeft.x + 6, Math.max(20, topLeft.y - 7));
     });
 
     const look = result.look;

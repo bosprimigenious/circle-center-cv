@@ -15,6 +15,7 @@ import { eulerFromMatrix, yawRotationMatrix } from '../src/gaze/headPose.ts';
 import { shouldersFromPose } from '../src/pose/shoulders.ts';
 import { CheatSession } from '../src/cheat/session.ts';
 import { THRESHOLDS } from '../src/cheat/scoring.ts';
+import { faceQualityFrom, l2csBoxTrusted } from '../src/face/completeness.ts';
 
 const uniform = new Float32Array(L2CS_BINS).fill(1);
 const uniformDeg = decodeBinLogits(uniform) * 180 / Math.PI;
@@ -29,16 +30,34 @@ leftPeak[30] = 20;
 const leftRad = decodeBinLogits(leftPeak);
 assert.ok(leftRad < -0.5, `bin 30 should be negative yaw, got ${leftRad}`);
 
+const plantIris = (target, irisIdx, cx, cy, radius = 0.012) => {
+    const ring = [
+        [cx, cy],
+        [cx + radius, cy],
+        [cx, cy + radius],
+        [cx - radius, cy],
+        [cx, cy - radius],
+    ];
+    irisIdx.forEach((index, offset) => {
+        target[index] = { x: ring[offset][0], y: ring[offset][1], z: 0 };
+    });
+};
+
 const points = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
+points[1] = { x: 0.5, y: 0.42, z: 0 };
+points[10] = { x: 0.5, y: 0.22, z: 0 };
+points[152] = { x: 0.5, y: 0.72, z: 0 };
+points[234] = { x: 0.28, y: 0.48, z: 0 };
+points[454] = { x: 0.72, y: 0.48, z: 0 };
 for (const index of PERSON_RIGHT_ORBIT) points[index] = { x: 0.4, y: 0.4, z: 0 };
 points[33] = { x: 0.35, y: 0.38, z: 0 };
 points[133] = { x: 0.45, y: 0.42, z: 0 };
-for (const index of PERSON_RIGHT_IRIS) points[index] = { x: 0.4, y: 0.4, z: 0 };
+plantIris(points, PERSON_RIGHT_IRIS, 0.4, 0.4);
 
 for (const index of PERSON_LEFT_ORBIT) points[index] = { x: 0.6, y: 0.4, z: 0 };
 points[362] = { x: 0.55, y: 0.38, z: 0 };
 points[263] = { x: 0.65, y: 0.42, z: 0 };
-for (const index of PERSON_LEFT_IRIS) points[index] = { x: 0.6, y: 0.4, z: 0 };
+plantIris(points, PERSON_LEFT_IRIS, 0.6, 0.4);
 
 const iris = irisGazeFromLandmarks(points);
 assert.ok(iris.left && iris.right, 'both orbits measured');
@@ -47,8 +66,8 @@ assert.ok(iris.gazeY != null && Math.abs(iris.gazeY) < 0.25, `centered iris gaze
 assert.equal(gazeXFromLandmarks(points), iris.gazeX);
 assert.equal(gazeYFromLandmarks(points), iris.gazeY);
 
-for (const index of PERSON_RIGHT_IRIS) points[index] = { x: 0.44, y: 0.41, z: 0 };
-for (const index of PERSON_LEFT_IRIS) points[index] = { x: 0.64, y: 0.41, z: 0 };
+plantIris(points, PERSON_RIGHT_IRIS, 0.44, 0.41);
+plantIris(points, PERSON_LEFT_IRIS, 0.64, 0.41);
 const lookingRight = irisGazeFromLandmarks(points);
 assert.ok(lookingRight.gazeX != null && lookingRight.gazeX > 0.15, `rightward iris ${lookingRight.gazeX}`);
 const rightRay = rayFromEye(lookingRight.right);
@@ -175,6 +194,118 @@ assert.equal(fusedAway.live.gazeAway, true);
 assert.equal(fusedAway.live.gazeDirection, 'right');
 assert.ok(fusedAway.live.fusedYaw != null && fusedAway.live.fusedYaw > 0, 'live fused yaw is wired');
 
+const collapsed = points.map((point) => ({ ...point }));
+for (const index of PERSON_RIGHT_IRIS) collapsed[index] = { x: 0.4, y: 0.4, z: 0 };
+for (const index of PERSON_LEFT_IRIS) collapsed[index] = { x: 0.6, y: 0.4, z: 0 };
+const collapsedIris = irisGazeFromLandmarks(collapsed);
+assert.equal(collapsedIris.left, null, 'collapsed iris radius must drop the eye');
+assert.equal(collapsedIris.right, null);
+assert.equal(collapsedIris.gazeX, null);
+
+const oneEye = points.map((point) => ({ ...point }));
+for (const index of PERSON_LEFT_IRIS) oneEye[index] = { x: 0.05, y: 0.05, z: 0 };
+const one = irisGazeFromLandmarks(oneEye);
+assert.ok(one.right && !one.left, 'occluded far iris is dropped, near eye kept');
+assert.ok(one.gazeX != null, 'one good eye still yields gazeX');
+
+const fullBox = { x: 0.22, y: 0.12, width: 0.56, height: 0.68 };
+const okQuality = faceQualityFrom({
+    landmarks: points,
+    box: fullBox,
+    iris: irisGazeFromLandmarks(points),
+});
+assert.equal(okQuality.pitchTrusted, true);
+assert.equal(okQuality.irisTrusted, true);
+assert.equal(okQuality.label, '完整');
+assert.equal(l2csBoxTrusted(fullBox), true);
+assert.equal(l2csBoxTrusted({ x: 0.01, y: 0.2, width: 0.4, height: 0.5 }), false);
+
+const chinOut = points.map((point) => ({ ...point }));
+chinOut[152] = { x: 0.5, y: 0.995, z: 0 };
+const clipQuality = faceQualityFrom({
+    landmarks: chinOut,
+    box: { x: 0.2, y: 0.4, width: 0.5, height: 0.62 },
+    iris: irisGazeFromLandmarks(chinOut),
+});
+assert.equal(clipQuality.clipBottom, true);
+assert.equal(clipQuality.pitchTrusted, false);
+assert.equal(clipQuality.l2csTrusted, false);
+
+const poseForHand = Array.from({ length: 33 }, () => ({ x: 0.1, y: 0.9, z: 0, visibility: 0.2 }));
+poseForHand[15] = { x: 0.5, y: 0.45, z: 0, visibility: 0.95 };
+const handQuality = faceQualityFrom({
+    landmarks: points,
+    box: fullBox,
+    iris: irisGazeFromLandmarks(points),
+    poseLandmarks: poseForHand,
+});
+assert.equal(handQuality.handOverFace, true);
+assert.equal(handQuality.irisTrusted, false);
+assert.match(handQuality.label, /手挡脸/);
+
+const clipCheat = new CheatSession();
+for (let index = 0; index < THRESHOLDS.BASELINE_MIN_SAMPLES; index += 1) {
+    clipCheat.ingest({
+        tSec: index * THRESHOLDS.VIDEO_INTERVAL_SEC,
+        landmarks: points,
+        faceCount: 1,
+        forceSample: true,
+    });
+}
+const downLm = points.map((point) => ({ ...point }));
+downLm[1] = { x: 0.5, y: 0.55, z: 0 };
+const trustedDown = clipCheat.ingest({
+    tSec: THRESHOLDS.BASELINE_MIN_SAMPLES * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: downLm,
+    faceCount: 1,
+    forceSample: true,
+});
+assert.equal(trustedDown.live.headDown, true, 'complete face still flags head-down from pitch');
+const untrustedDown = clipCheat.ingest({
+    tSec: (THRESHOLDS.BASELINE_MIN_SAMPLES + 1) * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: downLm,
+    faceCount: 1,
+    forceSample: true,
+    quality: {
+        pitchTrusted: false,
+        yawTrusted: false,
+        irisTrusted: false,
+        l2csTrusted: false,
+        clipped: true,
+        label: '出框下',
+    },
+});
+assert.equal(untrustedDown.live.headDown, false, 'clipped face without shoulders must not flag head-down');
+assert.equal(untrustedDown.live.faceClipped, true);
+assert.ok(untrustedDown.video.quality_flags.includes('face_clipped'));
+
+const shoulderClip = new CheatSession();
+for (let index = 0; index < THRESHOLDS.BASELINE_MIN_SAMPLES; index += 1) {
+    shoulderClip.ingest({
+        tSec: index * THRESHOLDS.VIDEO_INTERVAL_SEC,
+        landmarks: points,
+        faceCount: 1,
+        forceSample: true,
+        shoulders: { drop: -0.9, yaw: 0 },
+    });
+}
+const shoulderDown = shoulderClip.ingest({
+    tSec: THRESHOLDS.BASELINE_MIN_SAMPLES * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: downLm,
+    faceCount: 1,
+    forceSample: true,
+    shoulders: { drop: -0.9 + THRESHOLDS.SHOULDER_DROP_DELTA + 0.05, yaw: 0 },
+    quality: {
+        pitchTrusted: false,
+        yawTrusted: true,
+        irisTrusted: true,
+        l2csTrusted: false,
+        clipped: true,
+        label: '出框下',
+    },
+});
+assert.equal(shoulderDown.live.headDown, true, 'clipped face still uses shoulders for head-down');
+
 const landmarker = await readFile(new URL('../src/face/landmarker.ts', import.meta.url), 'utf8');
 if (!landmarker.includes('FACE_LANDMARK_COUNT')) throw new Error('478 landmarker missing');
 if (!landmarker.includes('outputFacialTransformationMatrixes: true')) {
@@ -196,6 +327,7 @@ if (!faceView.includes('rayFromEye')) throw new Error('FaceView missing iris ray
 if (!faceView.includes('fuseGaze')) throw new Error('FaceView missing fuseGaze');
 if (!faceView.includes('FatigueSession')) throw new Error('FaceView missing FatigueSession');
 if (!faceView.includes('LookSession')) throw new Error('FaceView missing LookSession');
+if (!faceView.includes('faceQualityFrom')) throw new Error('FaceView missing faceQualityFrom');
 
 const pipeline = await readFile(new URL('../src/face/pipeline.ts', import.meta.url), 'utf8');
 if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseLandmarks')) {
@@ -204,6 +336,7 @@ if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseL
 if (!pipeline.includes('Promise.all')) throw new Error('pipeline must run models in parallel');
 if (!pipeline.includes('l2csAgeMs')) throw new Error('pipeline must expose L2CS age for fusion');
 if (!pipeline.includes('lastL2csResolvedAt')) throw new Error('L2CS age must use resolve time, not start time');
+if (!pipeline.includes('l2csBoxTrusted')) throw new Error('pipeline must skip L2CS on clipped face boxes');
 
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 if (!app.includes('MobileGaze')) throw new Error('App missing MobileGaze copy');

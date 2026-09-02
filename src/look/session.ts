@@ -72,7 +72,8 @@ export class LookSession {
         this.trackAside(input, notes);
         this.trackHead(input, notes);
 
-        const asideSec = this.aside ? Math.max(0, input.tSec - this.aside.start) : 0;
+        const asideEnd = input.gazeUnreliable && this.aside ? this.aside.last : input.tSec;
+        const asideSec = this.aside ? Math.max(0, asideEnd - this.aside.start) : 0;
         const headTurnSec = this.head ? Math.max(0, input.tSec - this.head.start) : 0;
         const direction = this.aside?.dir ?? (input.gazeAway ? input.gazeDirection : null);
         const secondScreen = !notes && this.aside != null && asideSec >= LOOK_THRESHOLDS.DWELL_SEC;
@@ -124,6 +125,10 @@ export class LookSession {
 
     private trackAside(input: LookFrameInput, notes: boolean) {
         const t = input.tSec;
+        if (input.gazeUnreliable) {
+            if (this.aside && t - this.aside.last > LOOK_THRESHOLDS.GAP_SEC) this.aside = null;
+            return;
+        }
         const dir = input.gazeDirection;
         const active = !notes && input.gazeAway && (dir === 'left' || dir === 'right');
         if (active && dir) {

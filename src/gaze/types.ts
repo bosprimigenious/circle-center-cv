@@ -51,4 +51,5 @@ export type GazeOverlay = {
     blurry: boolean;
     fused: L2csGaze | null;
     head: { yaw: number; pitch: number; roll: number } | null;
+    unreliable?: boolean;
 };

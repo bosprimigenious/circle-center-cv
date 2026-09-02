@@ -73,7 +73,15 @@ const irisMeasure = (
         radiusSum += Math.hypot(point.x - cx, point.y - cy);
         radiusN += 1;
     }
-    const radius = radiusN ? radiusSum / radiusN : orbit.width * 0.18;
+    const radius = radiusN ? radiusSum / radiusN : 0;
+    if (orbit.width < 0.012 || orbit.height < 0.005) return null;
+    if (n < 3) return null;
+    const ratio = radius / orbit.width;
+    if (ratio < 0.05 || ratio > 0.48) return null;
+    const padX = orbit.width * 0.22;
+    const padY = Math.max(orbit.height, orbit.width * 0.4) * 0.22;
+    if (cx < orbit.x - padX || cx > orbit.x + orbit.width + padX) return null;
+    if (cy < orbit.y - padY || cy > orbit.y + orbit.height + padY) return null;
     const gazeX = (cx - (orbit.x + orbit.width / 2)) / orbit.width;
     const gazeY = orbit.height > 1e-4
         ? (cy - (orbit.y + orbit.height / 2)) / orbit.height

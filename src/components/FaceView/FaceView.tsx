@@ -7,6 +7,7 @@ import { LookSession } from '../../look/session';
 import { SpeechSession } from '../../speech/session';
 import { AvSyncSession } from '../../avsync/session';
 import { AudioTap } from '../../avsync/tap';
+import { faceQualityFrom } from '../../face/completeness';
 import { getFaceEngineLabel, subscribeFaceEngineStatus } from '../../face/landmarker';
 import { detectFrame, resetPipelineCache, warmupVisionPipeline } from '../../face/pipeline';
 import { drawFaceOverlay } from '../../face/overlay';
@@ -245,11 +246,18 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 }
                 const face = next.faces[0];
                 const iris = irisGazeFromLandmarks(face?.landmarks);
+                const quality = faceQualityFrom({
+                    landmarks: face?.landmarks,
+                    box: face?.box,
+                    headYaw: face?.headPose?.yaw ?? null,
+                    iris,
+                    poseLandmarks: pose.landmarks,
+                });
                 const origin = iris.left && iris.right
                     ? { x: (iris.left.center.x + iris.right.center.x) / 2, y: (iris.left.center.y + iris.right.center.y) / 2 }
-                    : face?.landmarks[1]
+                    : iris.left?.center ?? iris.right?.center ?? (face?.landmarks[1]
                         ? { x: face.landmarks[1].x, y: face.landmarks[1].y }
-                        : null;
+                        : null);
                 const tSec = sourceMode === 'video' && source instanceof HTMLVideoElement
                     ? source.currentTime
                     : (now - sessionOriginRef.current) / 1000;
@@ -265,16 +273,21 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     .map((box) => box.height / box.width);
                 const irisRadii = [iris.left?.radius, iris.right?.radius]
                     .filter((value): value is number => typeof value === 'number');
-                const ear = face ? eyeAspectRatio(face.landmarks) : null;
-                const mar = face ? mouthAspectRatio(face.landmarks) : null;
+                const ear = face
+                    ? eyeAspectRatio(face.landmarks, {
+                        personLeft: quality.leftEyeOk,
+                        personRight: quality.rightEyeOk,
+                    })
+                    : null;
+                const mar = quality.handOverFace ? null : (face ? mouthAspectRatio(face.landmarks) : null);
                 const orbitAspect = orbitAspects.length ? Math.min(...orbitAspects) : null;
                 const blurryHint = (ear != null && ear < 0.21) || (orbitAspect != null && orbitAspect < 0.28);
                 const fusedGaze = fuseGaze({
                     head: face?.headPose ?? null,
-                    iris,
-                    l2cs,
+                    iris: quality.irisTrusted ? iris : { gazeX: null, gazeY: null },
+                    l2cs: quality.l2csTrusted ? l2cs : null,
                     l2csAgeMs,
-                    blurry: blurryHint,
+                    blurry: blurryHint || !quality.irisTrusted,
                 });
                 const gazeEngine = [
                     'mediapipe-iris-orbit',
@@ -296,17 +309,18 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     shoulders: pose.shoulders
                         ? { drop: pose.shoulders.drop, yaw: pose.shoulders.yaw }
                         : null,
+                    quality,
                 });
                 const fatigue = fatigueSessionRef.current.ingest({
                     tSec,
-                    ear,
+                    ear: quality.handOverFace ? null : ear,
                     mar,
-                    jawOpen,
-                    eyeBlink,
-                    irisRadius: irisRadii.length
-                        ? irisRadii.reduce((sum, value) => sum + value, 0) / irisRadii.length
-                        : null,
-                    orbitAspect,
+                    jawOpen: quality.handOverFace ? null : jawOpen,
+                    eyeBlink: quality.handOverFace ? null : eyeBlink,
+                    irisRadius: quality.handOverFace || !irisRadii.length
+                        ? null
+                        : irisRadii.reduce((sum, value) => sum + value, 0) / irisRadii.length,
+                    orbitAspect: quality.handOverFace ? null : orbitAspect,
                     headDown: cheat.live.headDown,
                 });
                 const look = lookSessionRef.current.ingest({
@@ -317,11 +331,12 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     headDown: cheat.live.headDown,
                     fusedPitch: fusedGaze.fused?.pitch ?? null,
                     gazeBlurry: fatigue.gazeBlurry,
+                    gazeUnreliable: quality.handOverFace || (!quality.irisTrusted && !quality.l2csTrusted),
                 });
                 const speech = speechSessionRef.current.ingest({
                     tSec,
                     mar,
-                    jawOpen,
+                    jawOpen: quality.handOverFace ? null : jawOpen,
                 });
                 const avsync = avsyncSessionRef.current.ingest({
                     tSec,
@@ -343,16 +358,22 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     l2cs,
                     irisGazeX: iris.gazeX,
                     irisGazeY: iris.gazeY,
-                    leftRay: rayFromEye(iris.left),
-                    rightRay: rayFromEye(iris.right),
-                    irisRay: fusedIrisRay(iris),
-                    l2csRay: origin && l2cs ? l2csRayFrom(origin, l2cs) : null,
+                    leftRay: quality.irisTrusted ? rayFromEye(iris.left) : null,
+                    rightRay: quality.irisTrusted ? rayFromEye(iris.right) : null,
+                    irisRay: quality.irisTrusted ? fusedIrisRay(iris) : null,
+                    l2csRay: origin && quality.l2csTrusted && l2cs ? l2csRayFrom(origin, l2cs) : null,
                     geometricRay: origin && fusedGaze.geometric ? l2csRayFrom(origin, fusedGaze.geometric, 0.24) : null,
                     fusedRay: origin && fusedGaze.fused ? l2csRayFrom(origin, fusedGaze.fused, 0.32) : null,
-                    look: describeLook(iris.gazeX, iris.gazeY, l2cs, fusedGaze.fused),
-                    blurry: fatigue.gazeBlurry,
+                    look: describeLook(
+                        quality.irisTrusted ? iris.gazeX : null,
+                        quality.irisTrusted ? iris.gazeY : null,
+                        quality.l2csTrusted ? l2cs : null,
+                        fusedGaze.fused,
+                    ),
+                    blurry: fatigue.gazeBlurry || !quality.irisTrusted,
                     fused: fusedGaze.fused,
                     head: face?.headPose ?? null,
+                    unreliable: quality.handOverFace || quality.clipped,
                 };
                 if (!cancelled) {
                     publish({
@@ -364,6 +385,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         look,
                         speech,
                         avsync,
+                        quality,
                         engine: `${next.engine} · ${pose.engine}`,
                     });
                 }
@@ -406,7 +428,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
         : result
             ? result.faceCount > 0
-                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.look?.label ?? result.gaze?.look ?? ''} · ${result.speech?.label ?? ''} · ${result.avsync?.label ?? ''} · ${result.fatigue?.label ?? ''}`
+                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.quality && result.quality.label !== '完整' ? `${result.quality.label} · ` : ''}${result.look?.label ?? result.gaze?.look ?? ''} · ${result.speech?.label ?? ''} · ${result.avsync?.label ?? ''} · ${result.fatigue?.label ?? ''}`
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 

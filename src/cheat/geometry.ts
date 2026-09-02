@@ -5,6 +5,16 @@ const dist = (a: FaceLandmarkPoint, b: FaceLandmarkPoint) => (
     Math.hypot(a.x - b.x, a.y - b.y)
 );
 
+const inFrame = (point: FaceLandmarkPoint | undefined) => (
+    !!point
+    && Number.isFinite(point.x)
+    && Number.isFinite(point.y)
+    && point.x >= -0.02
+    && point.x <= 1.02
+    && point.y >= -0.02
+    && point.y <= 1.02
+);
+
 export const poseFromLandmarks = (lm: FaceLandmarkPoint[]) => {
     if (!lm || lm.length < 264) return null;
     const nose = lm[1];
@@ -12,7 +22,7 @@ export const poseFromLandmarks = (lm: FaceLandmarkPoint[]) => {
     const forehead = lm[10];
     const leftEye = lm[33];
     const rightEye = lm[263];
-    if (!nose || !chin || !forehead || !leftEye || !rightEye) return null;
+    if (![nose, chin, forehead, leftEye, rightEye].every(inFrame)) return null;
     const faceH = chin.y - forehead.y;
     if (Math.abs(faceH) < 1e-4) return null;
     const pitch = (nose.y - forehead.y) / faceH;
@@ -38,18 +48,21 @@ export const mouthAspectRatio = (lm: FaceLandmarkPoint[]) => {
     return dist(upper, lower) / width;
 };
 
-export const eyeAspectRatio = (lm: FaceLandmarkPoint[]) => {
+export const eyeAspectRatio = (
+    lm: FaceLandmarkPoint[],
+    eyes?: { personLeft?: boolean; personRight?: boolean },
+) => {
     const oneEye = (indices: [number, number, number, number, number, number]) => {
         const points = indices.map((index) => lm[index]);
-        if (points.some((point) => !point)) return null;
+        if (points.some((point) => !point || !inFrame(point))) return null;
         const [p1, p2, p3, p4, p5, p6] = points as FaceLandmarkPoint[];
         const horizontal = dist(p1, p4);
         if (horizontal < 1e-6) return null;
         return (dist(p2, p6) + dist(p3, p5)) / (2 * horizontal);
     };
-    const left = oneEye([33, 160, 158, 133, 153, 144]);
-    const right = oneEye([362, 385, 387, 263, 373, 380]);
-    const vals = [left, right].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const personRight = eyes?.personRight !== false ? oneEye([33, 160, 158, 133, 153, 144]) : null;
+    const personLeft = eyes?.personLeft !== false ? oneEye([362, 385, 387, 263, 373, 380]) : null;
+    const vals = [personRight, personLeft].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     if (!vals.length) return null;
     return vals.reduce((sum, value) => sum + value, 0) / vals.length;
 };

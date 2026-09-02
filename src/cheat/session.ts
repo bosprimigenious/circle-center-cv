@@ -25,7 +25,23 @@ type Sample = {
     head_turn: boolean;
     gaze_away: boolean;
     gaze_direction: GazeDirection | null;
+    pitchTrusted: boolean;
+    yawTrusted: boolean;
+    irisTrusted: boolean;
+    l2csTrusted: boolean;
+    clipped: boolean;
+    handOverFace: boolean;
 };
+
+const trustedQuality = {
+    pitchTrusted: true,
+    yawTrusted: true,
+    irisTrusted: true,
+    l2csTrusted: true,
+    handOverFace: false,
+    clipped: false,
+    label: '完整',
+} as const;
 
 const mergeSegments = (samples: Sample[], key: 'head_down' | 'gaze_away', intervalSec: number, withDirection = false): CheatSegment[] => {
     const segs: CheatSegment[] = [];
@@ -87,6 +103,7 @@ export class CheatSession {
         const ear = lm ? eyeAspectRatio(lm) : null;
         const jawOpen = input.jawOpen ?? null;
         if (input.gazeEngine) this.gazeEngine = input.gazeEngine;
+        const quality = { ...trustedQuality, ...input.quality };
 
         const due = input.forceSample || input.tSec - this.lastSampleAt >= THRESHOLDS.VIDEO_INTERVAL_SEC;
         if (due) {
@@ -103,18 +120,24 @@ export class CheatSession {
             this.samples.push({
                 time: input.tSec,
                 pose,
-                gaze_x: gazeX,
-                gaze_y: gazeY,
-                l2cs_yaw: l2cs?.yaw ?? null,
-                l2cs_pitch: l2cs?.pitch ?? null,
-                fused_yaw: input.fused?.yaw ?? null,
-                fused_pitch: input.fused?.pitch ?? null,
+                gaze_x: quality.irisTrusted ? gazeX : null,
+                gaze_y: quality.irisTrusted ? gazeY : null,
+                l2cs_yaw: quality.l2csTrusted ? (l2cs?.yaw ?? null) : null,
+                l2cs_pitch: quality.l2csTrusted ? (l2cs?.pitch ?? null) : null,
+                fused_yaw: (quality.irisTrusted || quality.l2csTrusted) ? (input.fused?.yaw ?? null) : null,
+                fused_pitch: (quality.irisTrusted || quality.l2csTrusted) ? (input.fused?.pitch ?? null) : null,
                 shoulder_drop: input.shoulders?.drop ?? null,
                 shoulder_yaw: input.shoulders?.yaw ?? null,
                 head_down: false,
                 head_turn: false,
                 gaze_away: false,
                 gaze_direction: null,
+                pitchTrusted: quality.pitchTrusted,
+                yawTrusted: quality.yawTrusted,
+                irisTrusted: quality.irisTrusted,
+                l2csTrusted: quality.l2csTrusted,
+                clipped: quality.clipped,
+                handOverFace: quality.handOverFace,
             });
             this.relabelSamples();
         }
@@ -123,16 +146,17 @@ export class CheatSession {
         const baseline = this.baseline();
         const live = this.liveFrom(
             pose,
-            gazeX,
-            gazeY,
-            l2cs,
+            quality.irisTrusted ? gazeX : null,
+            quality.irisTrusted ? gazeY : null,
+            quality.l2csTrusted ? l2cs : null,
             iris,
             input.shoulders ?? null,
             mar,
             ear,
             jawOpen,
             baseline,
-            input.fused ?? null,
+            (quality.irisTrusted || quality.l2csTrusted) ? (input.fused ?? null) : null,
+            quality,
         );
         const videoSignals = extractVideoSignals(video);
         const scored = computeScore(videoSignals);
@@ -187,17 +211,20 @@ export class CheatSession {
         pose: { pitch: number; yaw: number } | null,
         shoulders: { drop: number; yaw: number } | null,
         baseline: ReturnType<CheatSession['baseline']>,
+        quality: { pitchTrusted: boolean; yawTrusted: boolean } = trustedQuality,
     ): { down: boolean; turn: boolean } {
         let down = false;
         let turn = false;
-        if (baseline.shoulderOk && shoulders && baseline.shoulderDrop != null && baseline.shoulderYaw != null) {
+        const faceUntrusted = !quality.pitchTrusted || !quality.yawTrusted;
+        if (shoulders && baseline.shoulderDrop != null && baseline.shoulderYaw != null
+            && (baseline.shoulderOk || faceUntrusted)) {
             down = shoulders.drop - baseline.shoulderDrop > THRESHOLDS.SHOULDER_DROP_DELTA;
             turn = Math.abs(shoulders.yaw - baseline.shoulderYaw) > THRESHOLDS.SHOULDER_YAW_DELTA;
             return { down, turn };
         }
         if (baseline.poseOk && pose && baseline.pitch != null && baseline.yaw != null) {
-            down = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
-            turn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
+            if (quality.pitchTrusted) down = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
+            if (quality.yawTrusted) turn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
         }
         return { down, turn };
     }
@@ -207,10 +234,11 @@ export class CheatSession {
         l2csYaw: number | null,
         fusedYaw: number | null,
         baseline: ReturnType<CheatSession['baseline']>,
+        quality: { irisTrusted: boolean; l2csTrusted: boolean } = trustedQuality,
     ): { away: boolean; direction: GazeDirection | null } {
         let away = false;
         let direction: GazeDirection | null = null;
-        if (baseline.gaze != null && gazeX != null) {
+        if (quality.irisTrusted && baseline.gaze != null && gazeX != null) {
             const delta = gazeX - baseline.gaze;
             if (delta < -THRESHOLDS.GAZE_AWAY_DELTA) {
                 away = true;
@@ -220,9 +248,10 @@ export class CheatSession {
                 direction = 'right';
             }
         }
+        const modelOk = quality.irisTrusted || quality.l2csTrusted;
         const modelYaw = fusedYaw ?? l2csYaw;
         const modelBase = baseline.fusedYaw ?? baseline.l2csYaw;
-        if (modelBase != null && modelYaw != null) {
+        if (modelOk && modelBase != null && modelYaw != null) {
             const delta = modelYaw - modelBase;
             if (Math.abs(delta) > THRESHOLDS.L2CS_YAW_AWAY_RAD) {
                 away = true;
@@ -248,6 +277,7 @@ export class CheatSession {
                     ? { drop: sample.shoulder_drop, yaw: sample.shoulder_yaw }
                     : null,
                 baseline,
+                sample,
             );
             if (head.down) {
                 sample.head_down = true;
@@ -257,7 +287,13 @@ export class CheatSession {
                 sample.head_turn = true;
                 turn += 1;
             }
-            const gaze = this.gazeDecision(sample.gaze_x, sample.l2cs_yaw, sample.fused_yaw, baseline);
+            const gaze = this.gazeDecision(
+                sample.gaze_x,
+                sample.l2cs_yaw,
+                sample.fused_yaw,
+                baseline,
+                sample,
+            );
             if (gaze.away) {
                 sample.gaze_away = true;
                 sample.gaze_direction = gaze.direction;
@@ -279,9 +315,18 @@ export class CheatSession {
         jawOpen: number | null,
         baseline: ReturnType<CheatSession['baseline']>,
         fused: { yaw: number; pitch: number } | null,
+        quality: {
+            pitchTrusted: boolean;
+            yawTrusted: boolean;
+            irisTrusted: boolean;
+            l2csTrusted: boolean;
+            handOverFace: boolean;
+            clipped: boolean;
+            label: string;
+        } = trustedQuality,
     ): CheatLive {
-        const head = this.headDecision(pose, shoulders, baseline);
-        const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, fused?.yaw ?? null, baseline);
+        const head = this.headDecision(pose, shoulders, baseline, quality);
+        const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, fused?.yaw ?? null, baseline, quality);
         return {
             pitch: pose?.pitch ?? null,
             yaw: pose?.yaw ?? null,
@@ -305,6 +350,12 @@ export class CheatSession {
             shoulderVisible: shoulders != null,
             shoulderDrop: shoulders?.drop ?? null,
             shoulderYaw: shoulders?.yaw ?? null,
+            faceQualityLabel: quality.label,
+            pitchTrusted: quality.pitchTrusted,
+            yawTrusted: quality.yawTrusted,
+            irisTrusted: quality.irisTrusted,
+            handOverFace: quality.handOverFace,
+            faceClipped: quality.clipped,
         };
     }
 
@@ -326,6 +377,9 @@ export class CheatSession {
         const qualityFlags: string[] = [];
         if (this.samples.length && !headBaselineOk) qualityFlags.push('baseline_failed');
         if (this.samples.length && !gazeBaselineOk) qualityFlags.push('gaze_baseline_unavailable');
+        if (this.samples.some((sample) => sample.clipped)) qualityFlags.push('face_clipped');
+        if (this.samples.some((sample) => sample.handOverFace)) qualityFlags.push('hand_over_face');
+        if (this.samples.some((sample) => !sample.irisTrusted)) qualityFlags.push('iris_untrusted');
 
         let status = 'not_started';
         let error = '';
@@ -354,6 +408,12 @@ export class CheatSession {
         }
         if (awayRatio != null && awayRatio > THRESHOLDS.AWAY) {
             risks.push({ text: `视线偏离率 ${(awayRatio * 100).toFixed(0)}%`, level: 'warn' });
+        }
+        const last = this.samples[this.samples.length - 1];
+        if (last?.handOverFace) {
+            risks.push({ text: '手挡脸，低头/视线本帧不采信脸部点', level: 'warn' });
+        } else if (last?.clipped) {
+            risks.push({ text: '人脸出框，脸部 pitch/yaw 降级', level: 'warn' });
         }
         if (!risks.length) risks.push({ text: '画面正常，未检测到遮挡或静止异常', level: 'ok' });
 

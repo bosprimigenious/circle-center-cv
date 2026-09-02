@@ -38,6 +38,27 @@ export type FaceRegionName =
 
 export type FaceRegionCounts = Record<FaceRegionName, number>;
 
+export type FaceQuality = {
+    present: boolean;
+    clipped: boolean;
+    clipTop: boolean;
+    clipBottom: boolean;
+    clipLeft: boolean;
+    clipRight: boolean;
+    outFrac: number;
+    profile: boolean;
+    leftEyeOk: boolean;
+    rightEyeOk: boolean;
+    bothEyesOk: boolean;
+    handOverFace: boolean;
+    pitchTrusted: boolean;
+    yawTrusted: boolean;
+    irisTrusted: boolean;
+    l2csTrusted: boolean;
+    reasons: string[];
+    label: string;
+};
+
 export type DetectedFace = {
     landmarks: FaceLandmarkPoint[];
     box: FaceBox;
@@ -63,4 +84,5 @@ export type FaceFrameResult = {
     look?: LookLive | null;
     speech?: SpeechLive | null;
     avsync?: AvSyncLive | null;
+    quality?: FaceQuality | null;
 };
