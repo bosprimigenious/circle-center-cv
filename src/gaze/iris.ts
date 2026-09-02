@@ -1,5 +1,5 @@
 import type { FaceLandmarkPoint } from '../face/types';
-import type { IrisEyeMeasure, IrisGaze, NormalizedBox } from './types';
+import type { GazeRay, IrisEyeMeasure, IrisGaze, L2csGaze, NormalizedBox } from './types';
 
 /**
  * MediaPipe Face Landmarker naming: left/right = the person's own eyes.
@@ -101,4 +101,60 @@ export const irisGazeFromLandmarks = (lm: FaceLandmarkPoint[] | null | undefined
         gazeX: xs.length ? xs.reduce((sum, value) => sum + value, 0) / xs.length : null,
         gazeY: ys.length ? ys.reduce((sum, value) => sum + value, 0) / ys.length : null,
     };
+};
+
+const RAY_GAIN = 10;
+
+export const rayFromEye = (eye: IrisEyeMeasure | null | undefined): GazeRay | null => {
+    if (!eye) return null;
+    const midX = eye.orbit.x + eye.orbit.width / 2;
+    const midY = eye.orbit.height > 1e-4
+        ? eye.orbit.y + eye.orbit.height / 2
+        : eye.center.y;
+    const vx = eye.center.x - midX;
+    const vy = eye.gazeY == null ? 0 : eye.center.y - midY;
+    return {
+        x: eye.center.x,
+        y: eye.center.y,
+        dx: vx * RAY_GAIN,
+        dy: vy * RAY_GAIN,
+    };
+};
+
+export const fusedIrisRay = (iris: IrisGaze): GazeRay | null => {
+    const left = rayFromEye(iris.left);
+    const right = rayFromEye(iris.right);
+    if (!left && !right) return null;
+    if (!left) return right;
+    if (!right) return left;
+    return {
+        x: (left.x + right.x) / 2,
+        y: (left.y + right.y) / 2,
+        dx: (left.dx + right.dx) / 2,
+        dy: (left.dy + right.dy) / 2,
+    };
+};
+
+export const l2csRayFrom = (origin: { x: number; y: number }, l2cs: L2csGaze, length = 0.28): GazeRay => ({
+    x: origin.x,
+    y: origin.y,
+    dx: -Math.sin(l2cs.yaw) * Math.cos(l2cs.pitch) * length,
+    dy: -Math.sin(l2cs.pitch) * length,
+});
+
+export const describeLook = (
+    gazeX: number | null,
+    gazeY: number | null,
+    l2cs: L2csGaze | null,
+): string => {
+    // 虹膜优先。L2CS 符号与射线一致：dx=-sin(yaw)、dy=-sin(pitch)，图像 x 右 y 下。
+    const x = gazeX ?? (l2cs ? -Math.sin(l2cs.yaw) : null);
+    const y = gazeY ?? (l2cs ? -Math.sin(l2cs.pitch) : null);
+    const parts: string[] = [];
+    if (x != null && x < -0.08) parts.push('左');
+    else if (x != null && x > 0.08) parts.push('右');
+    if (y != null && y > 0.08) parts.push('下');
+    else if (y != null && y < -0.08) parts.push('上');
+    if (!parts.length) return '看镜头';
+    return `看${parts.join('')}`;
 };

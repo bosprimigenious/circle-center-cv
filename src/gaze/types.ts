@@ -25,6 +25,13 @@ export type L2csGaze = {
     pitch: number;
 };
 
+export type GazeRay = {
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+};
+
 export type GazeOverlay = {
     leftOrbit: NormalizedBox | null;
     rightOrbit: NormalizedBox | null;
@@ -34,4 +41,10 @@ export type GazeOverlay = {
     l2cs: L2csGaze | null;
     irisGazeX: number | null;
     irisGazeY: number | null;
+    leftRay: GazeRay | null;
+    rightRay: GazeRay | null;
+    irisRay: GazeRay | null;
+    l2csRay: GazeRay | null;
+    look: string;
+    blurry: boolean;
 };

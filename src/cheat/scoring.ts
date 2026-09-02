@@ -25,6 +25,8 @@ export const THRESHOLDS = {
     YAW_TURN_DELTA: 0.06,
     GAZE_AWAY_DELTA: 0.08,
     L2CS_YAW_AWAY_RAD: 0.30,
+    SHOULDER_DROP_DELTA: 0.12,
+    SHOULDER_YAW_DELTA: 0.10,
 };
 
 export const SIGNAL_CATALOG: Record<string, { level: string; text: string }> = {

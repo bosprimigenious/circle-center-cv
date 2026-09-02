@@ -2,11 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
-import { warmupFaceLandmarker } from './face/landmarker';
-import { warmupGazeEstimator } from './gaze/l2cs';
+import { warmupVisionPipeline } from './face/pipeline';
 
-void warmupFaceLandmarker();
-void warmupGazeEstimator();
+void warmupVisionPipeline();
 
 createRoot(document.getElementById('root')!).render(
     <StrictMode>

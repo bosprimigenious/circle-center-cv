@@ -9,6 +9,10 @@ import {
     PERSON_RIGHT_ORBIT,
 } from '../src/gaze/iris.ts';
 import { gazeXFromLandmarks, gazeYFromLandmarks } from '../src/cheat/geometry.ts';
+import { describeLook, fusedIrisRay, rayFromEye } from '../src/gaze/iris.ts';
+import { shouldersFromPose } from '../src/pose/shoulders.ts';
+import { CheatSession } from '../src/cheat/session.ts';
+import { THRESHOLDS } from '../src/cheat/scoring.ts';
 
 const uniform = new Float32Array(L2CS_BINS).fill(1);
 const uniformDeg = decodeBinLogits(uniform) * 180 / Math.PI;
@@ -45,6 +49,60 @@ for (const index of PERSON_RIGHT_IRIS) points[index] = { x: 0.44, y: 0.41, z: 0 
 for (const index of PERSON_LEFT_IRIS) points[index] = { x: 0.64, y: 0.41, z: 0 };
 const lookingRight = irisGazeFromLandmarks(points);
 assert.ok(lookingRight.gazeX != null && lookingRight.gazeX > 0.15, `rightward iris ${lookingRight.gazeX}`);
+const rightRay = rayFromEye(lookingRight.right);
+assert.ok(rightRay && rightRay.dx > 0, `right iris ray should go right, dx=${rightRay?.dx}`);
+const fused = fusedIrisRay(lookingRight);
+assert.ok(fused && fused.dx > 0, 'fused iris ray should follow the eyes');
+assert.equal(describeLook(0, 0, null), '看镜头');
+assert.equal(describeLook(0.3, 0.2, null), '看右下');
+assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }), '看右');
+assert.equal(describeLook(null, null, { yaw: 0.6, pitch: 0 }), '看左');
+
+const posePoints = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 1 }));
+posePoints[11] = { x: 0.35, y: 0.55, z: 0, visibility: 0.99 };
+posePoints[12] = { x: 0.65, y: 0.55, z: 0, visibility: 0.99 };
+posePoints[0] = { x: 0.5, y: 0.28, z: 0, visibility: 0.99 };
+const shoulders = shouldersFromPose(posePoints, { x: 0.5, y: 0.28, z: 0 });
+assert.ok(shoulders, 'shoulders visible');
+assert.ok(shoulders.drop < -0.5, `nose above shoulders, drop=${shoulders.drop}`);
+assert.ok(Math.abs(shoulders.yaw) < 0.05, `centered yaw ${shoulders.yaw}`);
+const downShoulders = shouldersFromPose(posePoints, { x: 0.5, y: 0.48, z: 0 });
+assert.ok(downShoulders && downShoulders.drop > shoulders.drop, 'looking down raises drop toward the shoulder line');
+const turned = shouldersFromPose(posePoints, { x: 0.62, y: 0.28, z: 0 });
+assert.ok(turned && turned.yaw > 0.2, `nose toward image-right raises yaw, got ${turned?.yaw}`);
+
+const hidden = posePoints.map((point, index) => (
+    index === 11 || index === 12 ? { ...point, visibility: 0.1 } : point
+));
+assert.equal(shouldersFromPose(hidden, { x: 0.5, y: 0.28, z: 0 }), null);
+
+const cheat = new CheatSession();
+for (let index = 0; index < THRESHOLDS.BASELINE_MIN_SAMPLES; index += 1) {
+    cheat.ingest({
+        tSec: index * THRESHOLDS.VIDEO_INTERVAL_SEC,
+        landmarks: points,
+        faceCount: 1,
+        forceSample: true,
+        shoulders: { drop: -0.9, yaw: 0 },
+    });
+}
+const lookingDown = cheat.ingest({
+    tSec: THRESHOLDS.BASELINE_MIN_SAMPLES * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: points,
+    faceCount: 1,
+    forceSample: true,
+    shoulders: { drop: -0.9 + THRESHOLDS.SHOULDER_DROP_DELTA + 0.05, yaw: 0 },
+});
+assert.equal(lookingDown.live.shoulderVisible, true);
+assert.equal(lookingDown.live.headDown, true);
+const lookingAside = cheat.ingest({
+    tSec: (THRESHOLDS.BASELINE_MIN_SAMPLES + 1) * THRESHOLDS.VIDEO_INTERVAL_SEC,
+    landmarks: points,
+    faceCount: 1,
+    forceSample: true,
+    shoulders: { drop: -0.9, yaw: THRESHOLDS.SHOULDER_YAW_DELTA + 0.05 },
+});
+assert.equal(lookingAside.live.headTurn, true);
 
 const landmarker = await readFile(new URL('../src/face/landmarker.ts', import.meta.url), 'utf8');
 if (!landmarker.includes('FACE_LANDMARK_COUNT')) throw new Error('478 landmarker missing');
@@ -58,16 +116,25 @@ if (!overlay.includes('drawOrbitBox')) throw new Error('overlay missing 眼眶 b
 if (overlay.includes('FACE_LANDMARKS_TESSELATION')) throw new Error('tessellation came back');
 
 const faceView = await readFile(new URL('../src/components/FaceView/FaceView.tsx', import.meta.url), 'utf8');
-if (!faceView.includes('estimateGazeFromBox')) throw new Error('FaceView missing MobileGaze call');
+if (!faceView.includes('detectFrame')) throw new Error('FaceView missing multi-model detectFrame');
 if (!faceView.includes('irisGazeFromLandmarks')) throw new Error('FaceView missing 眼眶 iris');
-if (/疲劳|PERCLOS|drowsiness/i.test(faceView)) throw new Error('fatigue detection must not be added');
+if (!faceView.includes('rayFromEye')) throw new Error('FaceView missing iris rays');
+if (!faceView.includes('FatigueSession')) throw new Error('FaceView missing FatigueSession');
+
+const pipeline = await readFile(new URL('../src/face/pipeline.ts', import.meta.url), 'utf8');
+if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseLandmarks')) {
+    throw new Error('pipeline must call face and pose together');
+}
+if (!pipeline.includes('Promise.all')) throw new Error('pipeline must run models in parallel');
 
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 if (!app.includes('MobileGaze')) throw new Error('App missing MobileGaze copy');
-if (/(PERCLOS|drowsiness|blinkRate)/i.test(app)) throw new Error('fatigue metrics leaked into App');
+if (!app.includes('疲劳检测')) throw new Error('App missing 疲劳检测 panel');
+if (!app.includes('PERCLOS')) throw new Error('App missing PERCLOS');
 
 const copy = await readFile(new URL('./copy-mediapipe.mjs', import.meta.url), 'utf8');
 if (!copy.includes('mobileone_s0_gaze.onnx')) throw new Error('postinstall missing MobileGaze download');
+if (!copy.includes('pose_landmarker_lite.task')) throw new Error('postinstall missing Pose lite download');
 if (!copy.includes('ort-wasm-simd-threaded.wasm')) throw new Error('postinstall missing ORT wasm copy');
 
 console.log('verify-gaze: pass');

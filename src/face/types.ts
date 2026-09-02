@@ -1,5 +1,7 @@
 import type { CheatSnapshot } from '../cheat/types';
+import type { FatigueLive } from '../fatigue/types';
 import type { GazeOverlay } from '../gaze/types';
+import type { DetectedPose } from '../pose/types';
 
 export type FaceLandmarkPoint = {
     x: number;
@@ -51,4 +53,6 @@ export type FaceFrameResult = {
     error?: string;
     cheat?: CheatSnapshot | null;
     gaze?: GazeOverlay | null;
+    pose?: DetectedPose | null;
+    fatigue?: FatigueLive | null;
 };

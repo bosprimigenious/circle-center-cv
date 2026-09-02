@@ -1,26 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    detectFaceLandmarks,
-    getFaceEngineLabel,
-    subscribeFaceEngineStatus,
-    warmupFaceLandmarker,
-} from '../../face/landmarker';
 import { CheatSession } from '../../cheat/session';
-import { irisGazeFromLandmarks } from '../../gaze/iris';
-import {
-    estimateGazeFromBox,
-    getGazeEngineLabel,
-    subscribeGazeEngineStatus,
-    warmupGazeEstimator,
-} from '../../gaze/l2cs';
-import type { L2csGaze } from '../../gaze/types';
+import { FatigueSession } from '../../fatigue/session';
+import { getFaceEngineLabel, subscribeFaceEngineStatus } from '../../face/landmarker';
+import { detectFrame, resetPipelineCache, warmupVisionPipeline } from '../../face/pipeline';
 import { drawFaceOverlay } from '../../face/overlay';
 import type { FaceFrameResult } from '../../face/types';
+import {
+    describeLook,
+    fusedIrisRay,
+    irisGazeFromLandmarks,
+    l2csRayFrom,
+    rayFromEye,
+} from '../../gaze/iris';
+import { getGazeEngineLabel, subscribeGazeEngineStatus } from '../../gaze/l2cs';
+import { getPoseEngineLabel, subscribePoseEngineStatus } from '../../pose/landmarker';
 import './FaceView.css';
 
 const DETECT_INTERVAL_MS = 66;
 const PANEL_INTERVAL_MS = 200;
-const L2CS_INTERVAL_MS = 180;
 
 type SourceMode = 'camera' | 'image' | 'video';
 
@@ -43,13 +40,11 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const lastDetectAtRef = useRef(0);
     const lastPanelAtRef = useRef(0);
     const cheatSessionRef = useRef(new CheatSession());
+    const fatigueSessionRef = useRef(new FatigueSession());
     const sessionOriginRef = useRef(0);
     const lastCoveredAtRef = useRef(0);
     const lastVideoTimeRef = useRef(0);
     const coveredCanvasRef = useRef<HTMLCanvasElement | null>(null);
-    const l2csBusyRef = useRef(false);
-    const lastL2csRef = useRef<L2csGaze | null>(null);
-    const lastL2csAtRef = useRef(0);
 
     const [sourceMode, setSourceMode] = useState<SourceMode>('camera');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -75,23 +70,26 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
 
     useEffect(() => {
         const started = performance.now();
-        const unsubscribeFace = subscribeFaceEngineStatus(setEngine);
-        const unsubscribeGaze = subscribeGazeEngineStatus(() => {
-            setEngine(`${getFaceEngineLabel()} · ${getGazeEngineLabel()}`);
-        });
+        const syncEngine = () => {
+            setEngine(`${getFaceEngineLabel()} · ${getPoseEngineLabel()} · ${getGazeEngineLabel()}`);
+        };
+        const unsubscribeFace = subscribeFaceEngineStatus(syncEngine);
+        const unsubscribePose = subscribePoseEngineStatus(syncEngine);
+        const unsubscribeGaze = subscribeGazeEngineStatus(syncEngine);
         const tick = window.setInterval(() => {
             setLoadElapsed(Math.max(0, Math.round((performance.now() - started) / 1000)));
         }, 250);
-        void Promise.all([warmupFaceLandmarker(), warmupGazeEstimator()])
+        void warmupVisionPipeline()
             .then(() => {
                 setEngineReady(true);
-                setEngine(`${getFaceEngineLabel()} · ${getGazeEngineLabel()}`);
+                syncEngine();
             })
             .catch((error) => {
                 setEngine(error instanceof Error ? error.message : String(error));
             });
         return () => {
             unsubscribeFace();
+            unsubscribePose();
             unsubscribeGaze();
             window.clearInterval(tick);
         };
@@ -112,11 +110,11 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
 
     const resetCheat = useCallback(() => {
         cheatSessionRef.current.reset();
+        fatigueSessionRef.current.reset();
         sessionOriginRef.current = performance.now();
         lastCoveredAtRef.current = 0;
         lastVideoTimeRef.current = 0;
-        lastL2csRef.current = null;
-        lastL2csAtRef.current = 0;
+        resetPipelineCache();
     }, []);
 
     const grabCoveredFrame = useCallback((media: HTMLVideoElement | HTMLImageElement) => {
@@ -211,7 +209,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             lastDetectAtRef.current = now;
             busyRef.current = true;
             try {
-                const next = await detectFaceLandmarks(
+                const { face: next, pose, l2cs } = await detectFrame(
                     source,
                     sourceMode === 'image' ? 'IMAGE' : 'VIDEO',
                     now,
@@ -222,35 +220,26 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 }
                 const face = next.faces[0];
                 const iris = irisGazeFromLandmarks(face?.landmarks);
-                const dueL2cs = sourceMode === 'image' || now - lastL2csAtRef.current >= L2CS_INTERVAL_MS;
-                if (face && dueL2cs && (sourceMode === 'image' || !l2csBusyRef.current)) {
-                    lastL2csAtRef.current = now;
-                    const runL2cs = async () => {
-                        l2csBusyRef.current = true;
-                        try {
-                            const gaze = await estimateGazeFromBox(source, face.box);
-                            if (gaze) lastL2csRef.current = gaze;
-                        } catch (error) {
-                            console.warn('MobileGaze infer failed', error);
-                        } finally {
-                            l2csBusyRef.current = false;
-                        }
-                    };
-                    if (sourceMode === 'image') await runL2cs();
-                    else void runL2cs();
-                }
-                const l2cs = lastL2csRef.current
-                    ? { yaw: lastL2csRef.current.yaw, pitch: lastL2csRef.current.pitch }
-                    : null;
+                const origin = iris.left && iris.right
+                    ? { x: (iris.left.center.x + iris.right.center.x) / 2, y: (iris.left.center.y + iris.right.center.y) / 2 }
+                    : face?.landmarks[1]
+                        ? { x: face.landmarks[1].x, y: face.landmarks[1].y }
+                        : null;
                 const tSec = sourceMode === 'video' && source instanceof HTMLVideoElement
                     ? source.currentTime
                     : (now - sessionOriginRef.current) / 1000;
                 const forceSample = sourceMode === 'image' || now - lastCoveredAtRef.current >= 2000;
                 if (forceSample) lastCoveredAtRef.current = now;
                 const jawOpen = face?.blendshapes.find((item) => item.name === 'jawOpen')?.score ?? null;
-                const gazeEngine = l2cs
-                    ? 'mediapipe-iris-orbit+mobilegaze-l2cs'
-                    : 'mediapipe-iris-orbit';
+                const blinkLeft = face?.blendshapes.find((item) => item.name === 'eyeBlinkLeft')?.score;
+                const blinkRight = face?.blendshapes.find((item) => item.name === 'eyeBlinkRight')?.score;
+                const blinks = [blinkLeft, blinkRight].filter((value): value is number => typeof value === 'number');
+                const eyeBlink = blinks.length ? blinks.reduce((sum, value) => sum + value, 0) / blinks.length : null;
+                const gazeEngine = [
+                    'mediapipe-iris-orbit',
+                    l2cs ? 'mobilegaze-l2cs' : null,
+                    pose.shoulders ? 'pose-shoulders' : null,
+                ].filter(Boolean).join('+');
                 const cheat = cheatSessionRef.current.ingest({
                     tSec,
                     landmarks: face?.landmarks ?? null,
@@ -260,6 +249,26 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     forceSample,
                     l2cs,
                     gazeEngine,
+                    shoulders: pose.shoulders
+                        ? { drop: pose.shoulders.drop, yaw: pose.shoulders.yaw }
+                        : null,
+                });
+                const orbitAspects = [iris.left?.orbit, iris.right?.orbit]
+                    .filter((box): box is NonNullable<typeof box> => !!box && box.width > 1e-6)
+                    .map((box) => box.height / box.width);
+                const irisRadii = [iris.left?.radius, iris.right?.radius]
+                    .filter((value): value is number => typeof value === 'number');
+                const fatigue = fatigueSessionRef.current.ingest({
+                    tSec,
+                    ear: cheat.live.ear,
+                    mar: cheat.live.mar,
+                    jawOpen,
+                    eyeBlink,
+                    irisRadius: irisRadii.length
+                        ? irisRadii.reduce((sum, value) => sum + value, 0) / irisRadii.length
+                        : null,
+                    orbitAspect: orbitAspects.length ? Math.min(...orbitAspects) : null,
+                    headDown: cheat.live.headDown,
                 });
                 const gaze = {
                     leftOrbit: iris.left?.orbit ?? null,
@@ -270,14 +279,27 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     rightIris: iris.right
                         ? { x: iris.right.center.x, y: iris.right.center.y, radius: iris.right.radius }
                         : null,
-                    origin: face?.landmarks[1]
-                        ? { x: face.landmarks[1].x, y: face.landmarks[1].y }
-                        : null,
+                    origin,
                     l2cs,
                     irisGazeX: iris.gazeX,
                     irisGazeY: iris.gazeY,
+                    leftRay: rayFromEye(iris.left),
+                    rightRay: rayFromEye(iris.right),
+                    irisRay: fusedIrisRay(iris),
+                    l2csRay: origin && l2cs ? l2csRayFrom(origin, l2cs) : null,
+                    look: describeLook(iris.gazeX, iris.gazeY, l2cs),
+                    blurry: fatigue.gazeBlurry,
                 };
-                if (!cancelled) publish({ ...next, cheat, gaze });
+                if (!cancelled) {
+                    publish({
+                        ...next,
+                        cheat,
+                        gaze,
+                        pose,
+                        fatigue,
+                        engine: `${next.engine} · ${pose.engine}`,
+                    });
+                }
             } finally {
                 busyRef.current = false;
             }
@@ -317,7 +339,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
         : result
             ? result.faceCount > 0
-                ? `${result.faceCount} 张脸 · 每张 ${result.landmarkCount} 点（期望 ${result.expectedLandmarkCount}）`
+                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.gaze?.look ?? ''} · ${result.fatigue?.label ?? ''}`
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 
@@ -476,7 +498,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">
                     <strong>{hud}</strong>
-                    <span>{engine} · 478 网格 + 眼眶虹膜 + MobileGaze 视线</span>
+                    <span>{engine} · 478 + 肩点 + 虹膜射线 + 疲劳</span>
                 </div>
             </div>
         </div>

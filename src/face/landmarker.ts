@@ -1,18 +1,17 @@
-import { FaceLandmarker, FilesetResolver, type FaceLandmarkerResult } from '@mediapipe/tasks-vision';
+import { FaceLandmarker, type FaceLandmarkerResult } from '@mediapipe/tasks-vision';
 import { countFaceRegions, emptyRegionCounts, FACE_LANDMARK_COUNT } from './regions';
 import type { DetectedFace, FaceFrameResult, FaceLandmarkPoint } from './types';
+import { resolveVisionFileset } from './visionFileset';
 
 type RunningMode = 'IMAGE' | 'VIDEO';
 type StatusListener = (status: string) => void;
 
-const WASM_ROOT = `${import.meta.env.BASE_URL}mediapipe/wasm`;
 const MODEL_PATH = `${import.meta.env.BASE_URL}models/face_landmarker.task`;
 
 let landmarker: FaceLandmarker | null = null;
 let runningMode: RunningMode = 'VIDEO';
 let engineLabel = 'MediaPipe Face Landmarker';
 let engineStatus = '正在加载 Face Landmarker…';
-let filesetPromise: ReturnType<typeof FilesetResolver.forVisionTasks> | null = null;
 let modelBytes: Uint8Array | null = null;
 let bootPromise: Promise<FaceLandmarker> | null = null;
 let lastVideoTimestamp = 0;
@@ -87,11 +86,6 @@ const toFrameResult = (result: FaceLandmarkerResult, width: number, height: numb
     };
 };
 
-const resolveFileset = () => {
-    filesetPromise ??= FilesetResolver.forVisionTasks(WASM_ROOT);
-    return filesetPromise;
-};
-
 const loadModelBytes = async () => {
     if (modelBytes) return modelBytes;
     const response = await fetch(MODEL_PATH);
@@ -117,13 +111,13 @@ const landmarkerOptions = (mode: RunningMode, delegate: 'GPU' | 'CPU', modelAsse
 });
 
 const createLandmarker = async (delegate: 'GPU' | 'CPU', mode: RunningMode) => {
-    const [wasm, model] = await Promise.all([resolveFileset(), loadModelBytes()]);
+    const [wasm, model] = await Promise.all([resolveVisionFileset(), loadModelBytes()]);
     return FaceLandmarker.createFromOptions(wasm, landmarkerOptions(mode, delegate, model.slice()));
 };
 
 const createWithFallback = async (mode: RunningMode) => {
     setStatus('正在下载 WASM 与模型…');
-    await Promise.all([resolveFileset(), loadModelBytes()]);
+    await Promise.all([resolveVisionFileset(), loadModelBytes()]);
     setStatus('正在初始化 GPU…');
     try {
         const instance = await createLandmarker('GPU', mode);

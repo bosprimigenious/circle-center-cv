@@ -87,11 +87,14 @@ if (!faceView.includes("sourceMode === 'image' ? 'IMAGE' : 'VIDEO'")) {
     failures.push('file video must use VIDEO runningMode (detectForVideo), not IMAGE');
 }
 if (!faceView.includes('CheatSession')) failures.push('FaceView missing CheatSession for P2 video signals');
-if (!faceView.includes('estimateGazeFromBox')) failures.push('FaceView missing second-model MobileGaze infer');
+if (!faceView.includes('detectFrame')) failures.push('FaceView must call the multi-model pipeline');
 if (!faceView.includes('irisGazeFromLandmarks')) failures.push('FaceView missing 眼眶 iris path');
-if (/疲劳/.test(faceView)) failures.push('fatigue detection was added; it is out of scope');
+if (!faceView.includes('FatigueSession')) failures.push('FaceView missing FatigueSession');
+if (!faceView.includes('疲劳')) failures.push('FaceView HUD must show 疲劳');
 if (!overlay.includes('drawOrbitBox')) failures.push('overlay missing 眼眶 boxes');
 if (!overlay.includes('drawIrisEllipse')) failures.push('overlay missing iris ellipse');
+if (!overlay.includes('drawMappedRay')) failures.push('overlay missing gaze rays');
+if (!overlay.includes('drawPoseOverlay')) failures.push('overlay missing shoulder/pose drawing');
 
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');

@@ -1,4 +1,4 @@
-import { irisGazeFromLandmarks } from '../gaze/iris.ts';
+import { describeLook, irisGazeFromLandmarks } from '../gaze/iris.ts';
 import {
     brightnessAndGray,
     eyeAspectRatio,
@@ -6,9 +6,9 @@ import {
     median,
     mouthAspectRatio,
     poseFromLandmarks,
-} from './geometry';
-import { computeScore, extractVideoSignals, THRESHOLDS } from './scoring';
-import type { CheatFrameInput, CheatLive, CheatSegment, CheatSnapshot, CheatVideoRes, GazeDirection } from './types';
+} from './geometry.ts';
+import { computeScore, extractVideoSignals, THRESHOLDS } from './scoring.ts';
+import type { CheatFrameInput, CheatLive, CheatSegment, CheatSnapshot, CheatVideoRes, GazeDirection } from './types.ts';
 
 type Sample = {
     time: number;
@@ -17,6 +17,8 @@ type Sample = {
     gaze_y: number | null;
     l2cs_yaw: number | null;
     l2cs_pitch: number | null;
+    shoulder_drop: number | null;
+    shoulder_yaw: number | null;
     head_down: boolean;
     head_turn: boolean;
     gaze_away: boolean;
@@ -103,6 +105,8 @@ export class CheatSession {
                 gaze_y: gazeY,
                 l2cs_yaw: l2cs?.yaw ?? null,
                 l2cs_pitch: l2cs?.pitch ?? null,
+                shoulder_drop: input.shoulders?.drop ?? null,
+                shoulder_yaw: input.shoulders?.yaw ?? null,
                 head_down: false,
                 head_turn: false,
                 gaze_away: false,
@@ -113,7 +117,7 @@ export class CheatSession {
 
         const video = this.buildVideoRes();
         const baseline = this.baseline();
-        const live = this.liveFrom(pose, gazeX, gazeY, l2cs, iris, mar, ear, jawOpen, baseline);
+        const live = this.liveFrom(pose, gazeX, gazeY, l2cs, iris, input.shoulders ?? null, mar, ear, jawOpen, baseline);
         const videoSignals = extractVideoSignals(video);
         const scored = computeScore(videoSignals);
         const snapshot: CheatSnapshot = { live, video, videoSignals, scored };
@@ -131,13 +135,42 @@ export class CheatSession {
             (sample) => sample.time <= THRESHOLDS.BASELINE_DURATION_SEC && Math.abs(sample.pose!.yaw) <= THRESHOLDS.YAW_TURN_DELTA,
         );
         if (pool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) pool = withPose;
+        const withShoulders = this.samples.filter((sample) => sample.shoulder_drop != null);
+        let shoulderPool = withShoulders.filter(
+            (sample) => sample.time <= THRESHOLDS.BASELINE_DURATION_SEC
+                && (sample.shoulder_yaw == null || Math.abs(sample.shoulder_yaw) <= THRESHOLDS.SHOULDER_YAW_DELTA),
+        );
+        if (shoulderPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) shoulderPool = withShoulders;
         return {
             pitch: median(pool.map((sample) => sample.pose?.pitch)),
             yaw: median(pool.map((sample) => sample.pose?.yaw)),
             gaze: median(pool.map((sample) => sample.gaze_x)),
             l2csYaw: median(pool.map((sample) => sample.l2cs_yaw)),
+            shoulderDrop: median(shoulderPool.map((sample) => sample.shoulder_drop)),
+            shoulderYaw: median(shoulderPool.map((sample) => sample.shoulder_yaw)),
             poseOk: pool.length >= THRESHOLDS.BASELINE_MIN_SAMPLES && median(pool.map((sample) => sample.pose?.pitch)) != null,
+            shoulderOk: shoulderPool.length >= THRESHOLDS.BASELINE_MIN_SAMPLES
+                && median(shoulderPool.map((sample) => sample.shoulder_drop)) != null,
         };
+    }
+
+    private headDecision(
+        pose: { pitch: number; yaw: number } | null,
+        shoulders: { drop: number; yaw: number } | null,
+        baseline: ReturnType<CheatSession['baseline']>,
+    ): { down: boolean; turn: boolean } {
+        let down = false;
+        let turn = false;
+        if (baseline.shoulderOk && shoulders && baseline.shoulderDrop != null && baseline.shoulderYaw != null) {
+            down = shoulders.drop - baseline.shoulderDrop > THRESHOLDS.SHOULDER_DROP_DELTA;
+            turn = Math.abs(shoulders.yaw - baseline.shoulderYaw) > THRESHOLDS.SHOULDER_YAW_DELTA;
+            return { down, turn };
+        }
+        if (baseline.poseOk && pose && baseline.pitch != null && baseline.yaw != null) {
+            down = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
+            turn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
+        }
+        return { down, turn };
     }
 
     private gazeDecision(
@@ -177,15 +210,20 @@ export class CheatSession {
             sample.head_turn = false;
             sample.gaze_away = false;
             sample.gaze_direction = null;
-            if (baseline.poseOk && sample.pose) {
-                if (sample.pose.pitch - baseline.pitch! > THRESHOLDS.PITCH_DOWN_DELTA) {
-                    sample.head_down = true;
-                    down += 1;
-                }
-                if (Math.abs(sample.pose.yaw - baseline.yaw!) > THRESHOLDS.YAW_TURN_DELTA) {
-                    sample.head_turn = true;
-                    turn += 1;
-                }
+            const head = this.headDecision(
+                sample.pose,
+                sample.shoulder_drop != null && sample.shoulder_yaw != null
+                    ? { drop: sample.shoulder_drop, yaw: sample.shoulder_yaw }
+                    : null,
+                baseline,
+            );
+            if (head.down) {
+                sample.head_down = true;
+                down += 1;
+            }
+            if (head.turn) {
+                sample.head_turn = true;
+                turn += 1;
             }
             const gaze = this.gazeDecision(sample.gaze_x, sample.l2cs_yaw, baseline);
             if (gaze.away) {
@@ -203,17 +241,13 @@ export class CheatSession {
         gazeY: number | null,
         l2cs: { yaw: number; pitch: number } | null,
         iris: ReturnType<typeof irisGazeFromLandmarks>,
+        shoulders: { drop: number; yaw: number } | null,
         mar: number | null,
         ear: number | null,
         jawOpen: number | null,
         baseline: ReturnType<CheatSession['baseline']>,
     ): CheatLive {
-        let headDown = false;
-        let headTurn = false;
-        if (baseline.poseOk && pose && baseline.pitch != null && baseline.yaw != null) {
-            headDown = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
-            headTurn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
-        }
+        const head = this.headDecision(pose, shoulders, baseline);
         const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, baseline);
         return {
             pitch: pose?.pitch ?? null,
@@ -227,17 +261,21 @@ export class CheatSession {
             mar,
             ear,
             jawOpen,
-            headDown,
-            headTurn,
+            headDown: head.down,
+            headTurn: head.turn,
             gazeAway: gaze.away,
             gazeDirection: gaze.direction,
+            gazeLook: describeLook(gazeX, gazeY, l2cs),
             mouthOpen: (mar != null && mar > 0.45) || (jawOpen != null && jawOpen > 0.35),
+            shoulderVisible: shoulders != null,
+            shoulderDrop: shoulders?.drop ?? null,
+            shoulderYaw: shoulders?.yaw ?? null,
         };
     }
 
     private buildVideoRes(): CheatVideoRes {
         const counts = this.relabelSamples();
-        const poseAvailable = this.samples.filter((sample) => sample.pose).length;
+        const poseAvailable = this.samples.filter((sample) => sample.pose || sample.shoulder_drop != null).length;
         const gazeAvailable = this.samples.filter((sample) => sample.gaze_x != null || sample.l2cs_yaw != null).length;
         const faceN = this.samples.filter((sample) => sample.pose || sample.gaze_x != null || sample.l2cs_yaw != null).length;
         const noFace = this.samples.length - faceN;
@@ -245,12 +283,13 @@ export class CheatSession {
         const baseline = this.baseline();
         const covered = readN > 0 ? this.darkCount / readN : null;
         const staticRatio = readN > 1 ? this.staticCount / (readN - 1) : null;
-        const downRatio = baseline.poseOk && poseAvailable > 0 ? counts.down / poseAvailable : null;
-        const turnRatio = baseline.poseOk && poseAvailable > 0 ? counts.turn / poseAvailable : null;
+        const headBaselineOk = baseline.poseOk || baseline.shoulderOk;
+        const downRatio = headBaselineOk && poseAvailable > 0 ? counts.down / poseAvailable : null;
+        const turnRatio = headBaselineOk && poseAvailable > 0 ? counts.turn / poseAvailable : null;
         const gazeBaselineOk = baseline.gaze != null || baseline.l2csYaw != null;
         const awayRatio = gazeBaselineOk && gazeAvailable > 0 ? counts.away / gazeAvailable : null;
         const qualityFlags: string[] = [];
-        if (this.samples.length && !baseline.poseOk) qualityFlags.push('baseline_failed');
+        if (this.samples.length && !headBaselineOk) qualityFlags.push('baseline_failed');
         if (this.samples.length && !gazeBaselineOk) qualityFlags.push('gaze_baseline_unavailable');
 
         let status = 'not_started';

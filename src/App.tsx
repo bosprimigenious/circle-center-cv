@@ -43,7 +43,10 @@ export default function App() {
             { label: '采样', value: `${video.sample_count} · ${gaze.status}` },
             { label: '视线引擎', value: video.gaze_engine },
             { label: '本帧低头', value: live.headDown ? '是' : '否', className: live.headDown ? 'is-warn' : '' },
+            { label: '本帧转头', value: live.headTurn ? '是' : '否', className: live.headTurn ? 'is-warn' : '' },
             { label: '本帧侧视', value: live.gazeAway ? (live.gazeDirection ?? '是') : '否', className: live.gazeAway ? 'is-warn' : '' },
+            { label: '眼神看哪', value: live.gazeLook, className: live.gazeLook !== '看镜头' ? 'is-warn' : '' },
+            { label: '肩膀', value: live.shoulderVisible ? `有 · drop ${formatNum(live.shoulderDrop)} / yaw ${formatNum(live.shoulderYaw)}` : '未检出（近景可回退脸部 pitch）' },
             { label: 'pitch / yaw', value: `${formatNum(live.pitch)} / ${formatNum(live.yaw)}` },
             { label: '虹膜 gazeX / Y', value: `${formatNum(live.gazeX)} / ${formatNum(live.gazeY)}` },
             { label: 'L2CS yaw / pitch°', value: `${formatNum(live.l2csYaw != null ? live.l2csYaw * 180 / Math.PI : null, 1)} / ${formatNum(live.l2csPitch != null ? live.l2csPitch * 180 / Math.PI : null, 1)}` },
@@ -53,6 +56,21 @@ export default function App() {
             { label: '张嘴', value: live.mouthOpen ? `是 · jawOpen ${formatNum(live.jawOpen, 2)}` : `否 · ${formatNum(live.jawOpen, 2)}` },
         ];
     }, [cheat]);
+
+    const fatigue = faceResult?.fatigue ?? null;
+    const fatigueRows = useMemo(() => {
+        if (!fatigue) return [];
+        return [
+            { label: '状态', value: fatigue.label, className: fatigue.level === 'danger' ? 'is-danger' : fatigue.level === 'warn' ? 'is-warn' : 'is-ok' },
+            { label: '原因', value: fatigue.reasons.length ? fatigue.reasons.join(' / ') : '无' },
+            { label: '视线模糊', value: fatigue.gazeBlurry ? '是' : '否', className: fatigue.gazeBlurry ? 'is-warn' : '' },
+            { label: '闭眼', value: fatigue.eyesClosed ? `是 · ${formatNum(fatigue.closedSec, 1)}s` : '否', className: fatigue.eyesClosed ? 'is-warn' : '' },
+            { label: 'PERCLOS', value: formatPct(fatigue.perclos), className: ratioClass(fatigue.perclos, 0.2, 0.12) },
+            { label: 'EAR / 阈', value: `${formatNum(fatigue.ear)} / ${formatNum(fatigue.earThreshold)}` },
+            { label: '打哈欠', value: fatigue.yawn ? '是' : '否', className: fatigue.yawn ? 'is-warn' : '' },
+            { label: '眨眼/分', value: formatNum(fatigue.blinkPerMin, 1) },
+        ];
+    }, [fatigue]);
 
     const rows = useMemo(() => {
         const primary = faceResult?.faces[0];
@@ -84,11 +102,11 @@ export default function App() {
         <div className="app-shell">
             <header className="app-header">
                 <div>
-                    <p className="app-kicker">检测 · 稠密关键点 · 虹膜 · 视线</p>
-                    <h1>人脸网格 478 点 + MobileGaze</h1>
+                    <p className="app-kicker">检测 · 478 点 · 肩膀 · 虹膜射线 · 疲劳</p>
+                    <h1>人脸 478 + Pose 肩 + MobileGaze</h1>
                 </div>
                 <p className="app-note">
-                    MediaPipe Face Landmarker 478 点不动。眼眶 crop 升级虹膜（圆心 + 椭圆）。第二模型 MobileGaze MobileOne-S0（L2CS-Net / Gaze360）吃 478 人脸框，输出 yaw/pitch。不含疲劳检测、文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
+                    同一帧并行三个模型：Face Landmarker 478、Pose Landmarker lite（肩点 11/12 作低头转头参照）、MobileGaze L2CS。疲劳走几何：低头 + EAR/PERCLOS 闭眼 + 眼裂变窄（视线模糊）。不含文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
                 </p>
             </header>
             <main className="app-main">
@@ -119,6 +137,19 @@ export default function App() {
                         </>
                     ) : (
                         <p className="panel-empty">等待画面后按约 2 秒采样一次。</p>
+                    )}
+                    <h2>疲劳检测</h2>
+                    {fatigue ? (
+                        <dl>
+                            {fatigueRows.map((row) => (
+                                <div key={row.label} className="metric">
+                                    <dt>{row.label}</dt>
+                                    <dd className={row.className}>{row.value}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    ) : (
+                        <p className="panel-empty">等待画面后按帧累计 EAR / PERCLOS。</p>
                     )}
                     <h2>本帧网格</h2>
                     <dl>

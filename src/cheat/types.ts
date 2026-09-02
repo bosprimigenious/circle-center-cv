@@ -18,7 +18,11 @@ export type CheatLive = {
     headTurn: boolean;
     gazeAway: boolean;
     gazeDirection: GazeDirection | null;
+    gazeLook: string;
     mouthOpen: boolean;
+    shoulderVisible: boolean;
+    shoulderDrop: number | null;
+    shoulderYaw: number | null;
 };
 
 export type CheatSegment = {
@@ -80,4 +84,5 @@ export type CheatFrameInput = {
     forceSample?: boolean;
     l2cs?: { yaw: number; pitch: number } | null;
     gazeEngine?: string;
+    shoulders?: { drop: number; yaw: number } | null;
 };

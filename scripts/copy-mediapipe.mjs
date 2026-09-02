@@ -9,6 +9,8 @@ const modelDst = path.join(root, 'public', 'models', 'face_landmarker.task');
 const modelUrl = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const gazeDst = path.join(root, 'public', 'models', 'mobileone_s0_gaze.onnx');
 const gazeUrl = 'https://github.com/yakhyo/gaze-estimation/releases/download/weights/mobileone_s0_gaze.onnx';
+const poseDst = path.join(root, 'public', 'models', 'pose_landmarker_lite.task');
+const poseUrl = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 const ortSrc = path.join(root, 'node_modules', 'onnxruntime-web', 'dist');
 const ortDst = path.join(root, 'public', 'ort');
 const ortFiles = [
@@ -79,4 +81,17 @@ if (!fs.existsSync(gazeDst) || fs.statSync(gazeDst).size < 1_000_000) {
     console.log(`downloaded gaze model ${buffer.length} bytes -> ${path.relative(root, gazeDst)}`);
 } else {
     console.log(`keep existing gaze model ${path.relative(root, gazeDst)}`);
+}
+
+if (!fs.existsSync(poseDst) || fs.statSync(poseDst).size < 1_000_000) {
+    const response = await fetch(poseUrl);
+    if (!response.ok) {
+        console.error(`download failed: ${response.status} ${response.statusText} ${poseUrl}`);
+        process.exit(1);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    fs.writeFileSync(poseDst, buffer);
+    console.log(`downloaded pose model ${buffer.length} bytes -> ${path.relative(root, poseDst)}`);
+} else {
+    console.log(`keep existing pose model ${path.relative(root, poseDst)}`);
 }

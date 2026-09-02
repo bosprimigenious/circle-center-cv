@@ -1,5 +1,7 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-import type { GazeOverlay, NormalizedBox } from '../gaze/types';
+import type { GazeOverlay, GazeRay, NormalizedBox } from '../gaze/types';
+import { isVisible } from '../pose/shoulders';
+import { UPPER_BODY_CONNECTIONS, type DetectedPose } from '../pose/types';
 import { getObjectFitMapping, mapFramePointToOverlay, type OverlayFitMapping } from './overlayFit';
 import type { FaceFrameResult, FaceLandmarkPoint } from './types';
 
@@ -80,10 +82,11 @@ const drawArrow = (
     dx: number,
     dy: number,
     color: string,
+    lineWidth: number,
 ) => {
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = lineWidth;
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + dx, y + dy);
@@ -97,6 +100,73 @@ const drawArrow = (
     ctx.fill();
 };
 
+const drawMappedRay = (
+    ctx: CanvasRenderingContext2D,
+    ray: GazeRay,
+    frameWidth: number,
+    frameHeight: number,
+    mapping: OverlayFitMapping,
+    color: string,
+    width: number,
+) => {
+    const from = mapFramePointToOverlay(ray.x * frameWidth, ray.y * frameHeight, mapping);
+    const to = mapFramePointToOverlay((ray.x + ray.dx) * frameWidth, (ray.y + ray.dy) * frameHeight, mapping);
+    drawArrow(ctx, from.x, from.y, to.x - from.x, to.y - from.y, color, width);
+};
+
+const drawPoseOverlay = (
+    ctx: CanvasRenderingContext2D,
+    pose: DetectedPose,
+    frameWidth: number,
+    frameHeight: number,
+    mapping: OverlayFitMapping,
+) => {
+    const mapPt = (x: number, y: number) => mapFramePointToOverlay(x * frameWidth, y * frameHeight, mapping);
+    const points = pose.landmarks;
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.85)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (const [start, end] of UPPER_BODY_CONNECTIONS) {
+        const from = points[start];
+        const to = points[end];
+        if (!isVisible(from) || !isVisible(to)) continue;
+        const a = mapPt(from.x, from.y);
+        const b = mapPt(to.x, to.y);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(250, 204, 21, 0.9)';
+    const drawn = new Set<number>();
+    for (const [start, end] of UPPER_BODY_CONNECTIONS) {
+        for (const index of [start, end]) {
+            if (drawn.has(index)) continue;
+            drawn.add(index);
+            const point = points[index];
+            if (!isVisible(point)) continue;
+            const mapped = mapPt(point.x, point.y);
+            ctx.fillRect(mapped.x - 2, mapped.y - 2, 4, 4);
+        }
+    }
+    const shoulders = pose.shoulders;
+    if (shoulders) {
+        const left = mapPt(shoulders.left.x, shoulders.left.y);
+        const right = mapPt(shoulders.right.x, shoulders.right.y);
+        const mid = mapPt(shoulders.mid.x, shoulders.mid.y);
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(left.x, left.y);
+        ctx.lineTo(right.x, right.y);
+        ctx.stroke();
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(left.x - 3, left.y - 3, 6, 6);
+        ctx.fillRect(right.x - 3, right.y - 3, 6, 6);
+        ctx.fillStyle = '#fde68a';
+        ctx.fillRect(mid.x - 2, mid.y - 2, 4, 4);
+    }
+};
+
 const drawGazeOverlay = (
     ctx: CanvasRenderingContext2D,
     gaze: GazeOverlay,
@@ -105,29 +175,25 @@ const drawGazeOverlay = (
     mapping: OverlayFitMapping,
 ) => {
     const mapPt = (x: number, y: number) => mapFramePointToOverlay(x * frameWidth, y * frameHeight, mapping);
-    if (gaze.leftOrbit) drawOrbitBox(ctx, mapBox(gaze.leftOrbit, frameWidth, frameHeight, mapping), '#4ade80');
-    if (gaze.rightOrbit) drawOrbitBox(ctx, mapBox(gaze.rightOrbit, frameWidth, frameHeight, mapping), '#4ade80');
+    const orbitColor = gaze.blurry ? '#fbbf24' : '#4ade80';
+    const irisColor = gaze.blurry ? '#f59e0b' : '#38bdf8';
+    if (gaze.leftOrbit) drawOrbitBox(ctx, mapBox(gaze.leftOrbit, frameWidth, frameHeight, mapping), orbitColor);
+    if (gaze.rightOrbit) drawOrbitBox(ctx, mapBox(gaze.rightOrbit, frameWidth, frameHeight, mapping), orbitColor);
     const scaleX = mapping.scaleX * frameWidth;
     const scaleY = mapping.scaleY * frameHeight;
     if (gaze.leftIris) {
         const pt = mapPt(gaze.leftIris.x, gaze.leftIris.y);
-        drawIrisEllipse(ctx, pt.x, pt.y, gaze.leftIris.radius * scaleX, gaze.leftIris.radius * scaleY, '#38bdf8');
+        drawIrisEllipse(ctx, pt.x, pt.y, gaze.leftIris.radius * scaleX, gaze.leftIris.radius * scaleY, irisColor);
     }
     if (gaze.rightIris) {
         const pt = mapPt(gaze.rightIris.x, gaze.rightIris.y);
-        drawIrisEllipse(ctx, pt.x, pt.y, gaze.rightIris.radius * scaleX, gaze.rightIris.radius * scaleY, '#38bdf8');
+        drawIrisEllipse(ctx, pt.x, pt.y, gaze.rightIris.radius * scaleX, gaze.rightIris.radius * scaleY, irisColor);
     }
-    const origin = gaze.origin ? mapPt(gaze.origin.x, gaze.origin.y) : null;
-    if (origin && gaze.irisGazeX != null) {
-        const dx = gaze.irisGazeX * 90;
-        const dy = (gaze.irisGazeY ?? 0) * 70;
-        drawArrow(ctx, origin.x, origin.y, dx, dy, '#7dd3fc');
-    }
-    if (origin && gaze.l2cs) {
-        const length = 72;
-        const dx = -Math.sin(gaze.l2cs.yaw) * Math.cos(gaze.l2cs.pitch) * length;
-        const dy = -Math.sin(gaze.l2cs.pitch) * length;
-        drawArrow(ctx, origin.x, origin.y + 10, dx, dy, '#fb923c');
+    if (!gaze.blurry) {
+        if (gaze.leftRay) drawMappedRay(ctx, gaze.leftRay, frameWidth, frameHeight, mapping, '#7dd3fc', 2);
+        if (gaze.rightRay) drawMappedRay(ctx, gaze.rightRay, frameWidth, frameHeight, mapping, '#7dd3fc', 2);
+        if (gaze.irisRay) drawMappedRay(ctx, gaze.irisRay, frameWidth, frameHeight, mapping, '#38bdf8', 2.4);
+        if (gaze.l2csRay) drawMappedRay(ctx, gaze.l2csRay, frameWidth, frameHeight, mapping, '#fb923c', 2.6);
     }
 };
 
@@ -166,7 +232,7 @@ export const drawFaceOverlay = (
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    if (!result || result.faces.length === 0) {
+    if (!result || (result.faces.length === 0 && !result.pose?.landmarks.length)) {
         if (result?.error) {
             ctx.fillStyle = 'rgba(254, 202, 202, 0.92)';
             ctx.font = '600 13px system-ui, sans-serif';
@@ -176,6 +242,9 @@ export const drawFaceOverlay = (
     }
 
     const mapping = getObjectFitMapping(width, height, result.frameWidth, result.frameHeight, objectFit);
+    if (result.pose && result.faces.length === 0) {
+        drawPoseOverlay(ctx, result.pose, result.frameWidth, result.frameHeight, mapping);
+    }
 
     result.faces.forEach((face, faceIndex) => {
         const points = face.landmarks.map((point) => {
@@ -196,6 +265,9 @@ export const drawFaceOverlay = (
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, '#38bdf8', 1.8);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, '#38bdf8', 1.8);
         drawPointLattice(ctx, points);
+        if (faceIndex === 0 && result.pose) {
+            drawPoseOverlay(ctx, result.pose, result.frameWidth, result.frameHeight, mapping);
+        }
         if (result.gaze && faceIndex === 0) {
             drawGazeOverlay(ctx, result.gaze, result.frameWidth, result.frameHeight, mapping);
         }
@@ -216,4 +288,19 @@ export const drawFaceOverlay = (
         ctx.font = '700 11px system-ui, sans-serif';
         ctx.fillText(`脸 ${faceIndex + 1} · ${face.landmarks.length} 点`, topLeft.x + 6, Math.max(20, topLeft.y - 7));
     });
+
+    const fatigue = result.fatigue;
+    if (fatigue && fatigue.level !== 'ok') {
+        const banner = fatigue.reasons.length
+            ? `${fatigue.label} · ${fatigue.reasons.join(' / ')}`
+            : fatigue.label;
+        ctx.fillStyle = fatigue.level === 'danger' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(245, 158, 11, 0.9)';
+        const boxWidth = Math.min(420, width - 24);
+        ctx.fillRect((width - boxWidth) / 2, height - 44, boxWidth, 28);
+        ctx.fillStyle = '#fff';
+        ctx.font = '700 13px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(banner, width / 2, height - 25);
+        ctx.textAlign = 'start';
+    }
 };
