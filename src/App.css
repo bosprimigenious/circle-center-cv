@@ -1,7 +1,9 @@
 .app-shell {
-    min-height: 100vh;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     background:
         radial-gradient(1200px 520px at 12% -10%, rgba(14, 116, 144, 0.16), transparent 55%),
         #071018;
@@ -42,12 +44,15 @@
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-rows: minmax(0, 1fr);
     gap: 16px;
     padding: 0 16px 16px;
 }
 
 .stage {
+    min-width: 0;
     min-height: 0;
+    height: 100%;
     overflow: hidden;
     border: 1px solid rgba(148, 163, 184, 0.18);
     border-radius: 14px;
