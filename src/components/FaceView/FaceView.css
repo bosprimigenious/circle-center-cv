@@ -1,0 +1,4 @@
+.camera-container.source-camera .camera-video,
+.camera-container.source-demo .camera-video {
+    object-fit: cover;
+}

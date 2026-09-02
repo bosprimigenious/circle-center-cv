@@ -1,0 +1,14 @@
+public/mediapipe/
+public/models/*.task
+logs
+*.log
+npm-debug.log*
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.DS_Store
+.vscode/
+.idea
+*.sw?

@@ -1,0 +1,578 @@
+.camera-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: #020617;
+    overflow: hidden;
+}
+
+.camera-video-wrapper {
+    --camera-exposure-filter: brightness(1) contrast(1) saturate(1);
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.camera-video {
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: var(--camera-exposure-filter);
+}
+
+.camera-container.is-expanded .camera-video {
+    /* Overlay mapping in overlayFit.ts must use this same fit (contain). */
+    object-fit: contain;
+    background: #020617;
+}
+
+.demo-image {
+    background: #020617;
+}
+
+.camera-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.camera-crosshair {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 2;
+    width: 74px;
+    height: 74px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    filter: drop-shadow(0 1px 3px rgba(2, 6, 23, 0.72));
+}
+
+.camera-crosshair-line,
+.camera-crosshair-ring,
+.camera-crosshair-dot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.camera-crosshair-line {
+    background: rgba(248, 250, 252, 0.92);
+    box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.28);
+}
+
+.camera-crosshair-line.horizontal {
+    width: 74px;
+    height: 1px;
+}
+
+.camera-crosshair-line.vertical {
+    width: 1px;
+    height: 74px;
+}
+
+.camera-crosshair-ring {
+    width: 22px;
+    height: 22px;
+    border: 1px solid rgba(125, 211, 252, 0.95);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.28);
+}
+
+.camera-crosshair-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #f8fafc;
+}
+
+.camera-source-panel {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 3;
+    width: min(520px, calc(100% - 96px));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    color: #f8fafc;
+    pointer-events: none;
+}
+
+.source-segment,
+.manual-analyze-button,
+.ml-cnn-toggle,
+.demo-source-tools {
+    pointer-events: auto;
+}
+
+.source-segment {
+    width: fit-content;
+    display: inline-grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 2px;
+    padding: 3px;
+    background: rgba(2, 6, 23, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+.source-segment button,
+.manual-analyze-button,
+.ml-cnn-toggle,
+.demo-file-button,
+.demo-presets button {
+    border: 0;
+    color: #dbeafe;
+    background: transparent;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.08s ease, color 0.08s ease, transform 0.08s ease;
+}
+
+.source-segment button {
+    padding: 8px 10px;
+}
+
+.manual-analyze-button,
+.ml-cnn-toggle {
+    min-height: 34px;
+    padding: 8px 11px;
+    border: 1px solid rgba(125, 211, 252, 0.32);
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(10px);
+}
+
+.source-segment button:hover,
+.manual-analyze-button:hover,
+.ml-cnn-toggle:hover,
+.demo-file-button:hover,
+.demo-presets button:hover {
+    background: rgba(14, 165, 233, 0.18);
+    color: #f8fafc;
+}
+
+.source-segment button.is-active,
+.ml-cnn-toggle.is-active {
+    color: #082f49;
+    background: #bae6fd;
+}
+
+.ml-cnn-toggle.is-active {
+    border-color: rgba(8, 47, 73, 0.2);
+}
+
+.demo-source-tools {
+    flex-basis: 100%;
+    width: min(100%, 520px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(2, 6, 23, 0.68);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+.demo-file-button {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    min-height: 30px;
+    padding: 8px 10px;
+    color: #ecfeff;
+    background: rgba(20, 184, 166, 0.18);
+    border: 1px solid rgba(94, 234, 212, 0.32);
+}
+
+.demo-file-button input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.demo-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.demo-presets button {
+    min-height: 30px;
+    padding: 7px 9px;
+    border: 1px solid rgba(125, 211, 252, 0.22);
+    background: rgba(15, 23, 42, 0.62);
+}
+
+.demo-image-name {
+    min-width: 0;
+    max-width: 100%;
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.demo-center-controls {
+    flex-basis: 100%;
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.demo-center-controls label {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 48px minmax(90px, 1fr);
+    gap: 7px;
+    align-items: center;
+}
+
+.demo-center-controls span {
+    color: #e2e8f0;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.68rem;
+    line-height: 1;
+}
+
+.demo-center-controls input {
+    width: 100%;
+    accent-color: #7dd3fc;
+}
+
+.demo-center-controls button {
+    min-height: 30px;
+    padding: 7px 10px;
+    color: #dbeafe;
+    background: rgba(15, 23, 42, 0.62);
+    border: 1px solid rgba(125, 211, 252, 0.22);
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.demo-center-controls button:hover {
+    background: rgba(14, 165, 233, 0.18);
+    color: #f8fafc;
+}
+
+.camera-error {
+    height: 100%;
+    color: #fecaca;
+    padding: 24px;
+    font-size: 1rem;
+    text-align: center;
+    display: grid;
+    gap: 12px;
+    place-items: center;
+    place-content: center;
+    background: #111827;
+}
+
+.camera-error p {
+    margin: 0;
+    max-width: 28rem;
+    line-height: 1.5;
+}
+
+.camera-error-action {
+    border: none;
+    border-radius: 8px;
+    background: var(--accent-bright);
+    color: #fff;
+    padding: 0.55rem 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.camera-hud-status {
+    font-style: normal;
+    color: #bae6fd;
+    font-size: 0.78rem;
+}
+
+.exposure-shortcut-hint {
+    margin: 0;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    text-align: center;
+    letter-spacing: 0.02em;
+}
+
+.camera-hud {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    width: min(520px, calc(100% - 108px));
+    color: #f8fafc;
+    background: rgba(2, 6, 23, 0.68);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    padding: 10px 12px;
+    backdrop-filter: blur(10px);
+    display: grid;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.camera-hud strong {
+    font-size: 0.95rem;
+}
+
+.camera-hud span {
+    color: #cbd5e1;
+    font-size: 0.78rem;
+}
+
+.exposure-axis-panel {
+    --exposure-ratio: 0.5;
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    width: 68px;
+    min-height: min(500px, calc(100% - 56px));
+    padding: 10px 8px;
+    display: grid;
+    grid-template-rows: auto minmax(170px, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    justify-items: center;
+    color: #f8fafc;
+    background: rgba(2, 6, 23, 0.24);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    backdrop-filter: blur(7px);
+    transition: background 0.08s ease, border-color 0.08s ease, transform 0.08s ease;
+}
+
+.exposure-axis-panel:hover,
+.exposure-axis-panel:focus-within {
+    background: rgba(2, 6, 23, 0.46);
+    border-color: rgba(125, 211, 252, 0.36);
+    transform: translateY(-50%);
+}
+
+.exposure-axis-meta {
+    display: grid;
+    gap: 4px;
+    justify-items: center;
+    text-align: center;
+}
+
+.exposure-axis-meta span {
+    color: #cbd5e1;
+    font-size: 0.68rem;
+    line-height: 1.1;
+}
+
+.exposure-axis-meta strong {
+    color: #ffffff;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.1;
+}
+
+.exposure-axis {
+    position: relative;
+    width: 48px;
+    height: 100%;
+    min-height: 170px;
+    cursor: grab;
+    touch-action: none;
+    outline: none;
+}
+
+.exposure-axis:active {
+    cursor: grabbing;
+}
+
+.exposure-axis.is-disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
+.exposure-track,
+.exposure-fill {
+    position: absolute;
+    left: 50%;
+    width: 3px;
+    border-radius: 999px;
+    transform: translateX(-50%);
+}
+
+.exposure-track {
+    inset-block: 5px;
+    background: rgba(226, 232, 240, 0.2);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+}
+
+.exposure-fill {
+    bottom: 5px;
+    height: calc((100% - 10px) * var(--exposure-ratio));
+    background: #bae6fd;
+    box-shadow: 0 0 9px rgba(56, 189, 248, 0.18);
+    transition: height 0.04s linear;
+}
+
+.exposure-thumb {
+    position: absolute;
+    left: 50%;
+    bottom: calc(5px + (100% - 10px) * var(--exposure-ratio));
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    transform: translate(-50%, 50%);
+    background: #f8fafc;
+    border: 1px solid #7dd3fc;
+    box-shadow: 0 4px 12px rgba(2, 6, 23, 0.28), 0 0 0 3px rgba(56, 189, 248, 0.08);
+    transition: bottom 0.04s linear, transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.exposure-axis:hover .exposure-thumb,
+.exposure-axis:focus .exposure-thumb {
+    transform: translate(-50%, 50%) scale(1.12);
+    box-shadow: 0 6px 16px rgba(2, 6, 23, 0.34), 0 0 0 5px rgba(56, 189, 248, 0.14);
+}
+
+.exposure-tick {
+    position: absolute;
+    left: 50%;
+    width: 32px;
+    height: 1px;
+    transform: translateX(-50%);
+    background: rgba(226, 232, 240, 0.34);
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.exposure-tick b {
+    margin-left: 23px;
+    color: rgba(226, 232, 240, 0.76);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.exposure-tick.top {
+    top: 5px;
+}
+
+.exposure-tick.middle {
+    top: 50%;
+}
+
+.exposure-tick.upper {
+    top: 25%;
+}
+
+.exposure-tick.lower {
+    top: 75%;
+}
+
+.exposure-tick.bottom {
+    bottom: 5px;
+}
+
+.exposure-lock {
+    border: 1px solid rgba(125, 211, 252, 0.34);
+    background: rgba(14, 165, 233, 0.12);
+    color: #e0f2fe;
+    border-radius: 999px;
+    min-width: 50px;
+    padding: 6px 8px;
+    font-size: 0.76rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.08s ease, color 0.08s ease, transform 0.08s ease;
+}
+
+.exposure-lock:hover:not(:disabled) {
+    background: rgba(14, 165, 233, 0.24);
+    transform: translateY(-1px);
+}
+
+.exposure-lock.is-locked {
+    border-color: rgba(248, 113, 113, 0.54);
+    background: rgba(239, 68, 68, 0.16);
+    color: #fee2e2;
+}
+
+.exposure-lock:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.camera-support-note {
+    width: 100%;
+    color: #cbd5e1;
+    font-size: 0.62rem;
+    line-height: 1.25;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 760px) {
+    .camera-source-panel {
+        top: 10px;
+        left: 10px;
+        width: min(340px, calc(100% - 82px));
+    }
+
+    .demo-source-tools {
+        gap: 6px;
+        padding: 7px;
+    }
+
+    .demo-center-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .source-segment button,
+    .demo-file-button,
+    .demo-presets button {
+        font-size: 0.7rem;
+    }
+
+    .camera-hud {
+        left: 10px;
+        bottom: 10px;
+        width: min(320px, calc(100% - 92px));
+        padding: 9px 10px;
+    }
+
+    .exposure-axis-panel {
+        right: 8px;
+        width: 60px;
+        min-height: min(380px, calc(100% - 36px));
+        padding: 9px 6px;
+    }
+
+    .exposure-axis-meta span,
+    .camera-support-note {
+        font-size: 0.62rem;
+    }
+}

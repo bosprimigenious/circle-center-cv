@@ -1,0 +1,141 @@
+.app-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    background:
+        radial-gradient(1200px 520px at 12% -10%, rgba(14, 116, 144, 0.16), transparent 55%),
+        #071018;
+    color: #e8eef4;
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-end;
+    padding: 20px 24px 12px;
+}
+
+.app-kicker {
+    margin: 0 0 4px;
+    color: #7dd3fc;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 750;
+}
+
+.app-header-side {
+    display: grid;
+    gap: 10px;
+    justify-items: end;
+}
+
+.mode-segment {
+    display: inline-grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 2px;
+    padding: 3px;
+    background: rgba(2, 6, 23, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+}
+
+.mode-segment button {
+    border: 0;
+    padding: 8px 12px;
+    border-radius: 6px;
+    color: #dbeafe;
+    background: transparent;
+    font-size: 0.82rem;
+    font-weight: 750;
+    cursor: pointer;
+}
+
+.mode-segment button.is-active {
+    color: #082f49;
+    background: #bae6fd;
+}
+
+.app-note {
+    margin: 0;
+    max-width: 42rem;
+    color: #94a3b8;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.app-main {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    padding: 0 16px 16px;
+}
+
+.stage {
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 14px;
+}
+
+.panel {
+    min-height: 0;
+    overflow: auto;
+    padding: 16px;
+    background: rgba(2, 6, 23, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 14px;
+}
+
+.panel h2 {
+    margin: 0 0 12px;
+    font-size: 0.95rem;
+}
+
+.panel dl {
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.metric {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.metric dt {
+    color: #94a3b8;
+    font-size: 0.75rem;
+}
+
+.metric dd {
+    margin: 0;
+    color: #f8fafc;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .app-main {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(420px, 58vh) auto;
+    }
+}
