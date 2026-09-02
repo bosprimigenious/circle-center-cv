@@ -41,6 +41,10 @@ export type GazeOverlay = {
     l2cs: L2csGaze | null;
     irisGazeX: number | null;
     irisGazeY: number | null;
+    leftGazeX: number | null;
+    leftGazeY: number | null;
+    rightGazeX: number | null;
+    rightGazeY: number | null;
     leftRay: GazeRay | null;
     rightRay: GazeRay | null;
     irisRay: GazeRay | null;
@@ -50,6 +54,9 @@ export type GazeOverlay = {
     look: string;
     blurry: boolean;
     fused: L2csGaze | null;
+    geometric?: L2csGaze | null;
+    appearanceWeight?: number;
+    l2csAgeMs?: number;
     head: { yaw: number; pitch: number; roll: number } | null;
     unreliable?: boolean;
 };

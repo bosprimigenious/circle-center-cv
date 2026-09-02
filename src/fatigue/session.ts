@@ -47,13 +47,20 @@ export const perclosFromTicks = (ticks: Tick[], now: number, windowSec: number) 
 const emptyLive = (): FatigueLive => ({
     ear: null,
     earThreshold: FATIGUE_THRESHOLDS.EAR_CLOSED,
+    earOpen: null,
     eyesClosed: false,
     closedSec: 0,
     perclos: null,
     gazeBlurry: false,
     yawn: false,
+    yawnSec: 0,
     headDown: false,
     blinkPerMin: null,
+    blinkCount: 0,
+    orbitAspect: null,
+    irisRadius: null,
+    irisBaseline: null,
+    eyeBlink: null,
     level: 'ok',
     label: '清醒',
     reasons: [],
@@ -119,7 +126,8 @@ export class FatigueSession {
             || (input.jawOpen != null && input.jawOpen > 0.45);
         if (yawningNow) this.yawnSince ??= input.tSec;
         else this.yawnSince = null;
-        const yawn = this.yawnSince != null && input.tSec - this.yawnSince >= FATIGUE_THRESHOLDS.YAWN_SEC;
+        const yawnSec = this.yawnSince == null ? 0 : Math.max(0, input.tSec - this.yawnSince);
+        const yawn = yawnSec >= FATIGUE_THRESHOLDS.YAWN_SEC;
 
         this.ticks.push({ t: input.tSec, closed: eyesClosed });
         const windowStart = input.tSec - FATIGUE_THRESHOLDS.PERCLOS_WINDOW_SEC;
@@ -161,13 +169,20 @@ export class FatigueSession {
         this.last = {
             ear: input.ear,
             earThreshold,
+            earOpen: median(this.earOpen),
             eyesClosed,
             closedSec,
             perclos,
             gazeBlurry,
             yawn,
+            yawnSec,
             headDown: input.headDown,
             blinkPerMin,
+            blinkCount: this.blinks.length,
+            orbitAspect: input.orbitAspect ?? null,
+            irisRadius: input.irisRadius ?? null,
+            irisBaseline,
+            eyeBlink: input.eyeBlink ?? null,
             level,
             label,
             reasons,

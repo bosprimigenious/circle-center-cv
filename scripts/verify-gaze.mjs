@@ -164,6 +164,12 @@ const lookingDown = cheat.ingest({
 });
 assert.equal(lookingDown.live.shoulderVisible, true);
 assert.equal(lookingDown.live.headDown, true);
+assert.equal(lookingDown.live.headSource, 'shoulder');
+assert.ok(
+    lookingDown.live.shoulderDropDelta != null
+    && lookingDown.live.shoulderDropDelta > THRESHOLDS.SHOULDER_DROP_DELTA,
+    `drop delta ${lookingDown.live.shoulderDropDelta}`,
+);
 const lookingAside = cheat.ingest({
     tSec: (THRESHOLDS.BASELINE_MIN_SAMPLES + 1) * THRESHOLDS.VIDEO_INTERVAL_SEC,
     landmarks: points,
@@ -341,6 +347,14 @@ if (!pipeline.includes('l2csBoxTrusted')) throw new Error('pipeline must skip L2
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 if (!app.includes('MobileGaze')) throw new Error('App missing MobileGaze copy');
 if (!app.includes('融合 yaw / pitch°')) throw new Error('App missing fused gaze metric');
+if (!app.includes('融合外观权重')) throw new Error('App missing fusion appearance weight');
+if (!app.includes('肩 drop / yaw')) throw new Error('App missing quantitative shoulder metrics');
+if (!app.includes('Δdrop')) throw new Error('App missing shoulder drop delta');
+if (!app.includes('低头来源')) throw new Error('App missing head-down source');
+if (!app.includes('转头来源')) throw new Error('App missing head-turn source');
+if (!app.includes('EAR 睁眼基线')) throw new Error('App missing fatigue EAR baseline');
+if (!app.includes('左 gazeX / Y')) throw new Error('App missing per-eye iris gaze');
+if (!app.includes('L2CS 龄')) throw new Error('App missing L2CS age');
 if (!app.includes('疲劳检测')) throw new Error('App missing 疲劳检测 panel');
 if (!app.includes('PERCLOS')) throw new Error('App missing PERCLOS');
 

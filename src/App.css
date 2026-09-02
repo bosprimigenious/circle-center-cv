@@ -76,6 +76,19 @@
     margin-top: 0;
 }
 
+.panel h3 {
+    margin: 14px 0 6px;
+    color: #7dd3fc;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.metric-group + .metric-group h3 {
+    margin-top: 16px;
+}
+
 .verdict {
     display: grid;
     gap: 4px;
@@ -138,7 +151,7 @@
 
 .metric {
     display: grid;
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: 108px minmax(0, 1fr);
     gap: 10px;
     align-items: start;
     padding: 8px 0;

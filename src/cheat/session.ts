@@ -212,7 +212,7 @@ export class CheatSession {
         shoulders: { drop: number; yaw: number } | null,
         baseline: ReturnType<CheatSession['baseline']>,
         quality: { pitchTrusted: boolean; yawTrusted: boolean } = trustedQuality,
-    ): { down: boolean; turn: boolean } {
+    ): { down: boolean; turn: boolean; source: 'shoulder' | 'face' | null } {
         let down = false;
         let turn = false;
         const faceUntrusted = !quality.pitchTrusted || !quality.yawTrusted;
@@ -220,13 +220,14 @@ export class CheatSession {
             && (baseline.shoulderOk || faceUntrusted)) {
             down = shoulders.drop - baseline.shoulderDrop > THRESHOLDS.SHOULDER_DROP_DELTA;
             turn = Math.abs(shoulders.yaw - baseline.shoulderYaw) > THRESHOLDS.SHOULDER_YAW_DELTA;
-            return { down, turn };
+            return { down, turn, source: 'shoulder' };
         }
         if (baseline.poseOk && pose && baseline.pitch != null && baseline.yaw != null) {
             if (quality.pitchTrusted) down = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
             if (quality.yawTrusted) turn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
+            return { down, turn, source: 'face' };
         }
-        return { down, turn };
+        return { down, turn, source: null };
     }
 
     private gazeDecision(
@@ -343,6 +344,19 @@ export class CheatSession {
             jawOpen,
             headDown: head.down,
             headTurn: head.turn,
+            headSource: head.source,
+            pitchBase: baseline.pitch,
+            yawBase: baseline.yaw,
+            pitchDelta: pose && baseline.pitch != null ? pose.pitch - baseline.pitch : null,
+            yawDelta: pose && baseline.yaw != null ? pose.yaw - baseline.yaw : null,
+            shoulderDropBase: baseline.shoulderDrop,
+            shoulderYawBase: baseline.shoulderYaw,
+            shoulderDropDelta: shoulders && baseline.shoulderDrop != null
+                ? shoulders.drop - baseline.shoulderDrop
+                : null,
+            shoulderYawDelta: shoulders && baseline.shoulderYaw != null
+                ? shoulders.yaw - baseline.shoulderYaw
+                : null,
             gazeAway: gaze.away,
             gazeDirection: gaze.direction,
             gazeLook: describeLook(gazeX, gazeY, l2cs, fused),

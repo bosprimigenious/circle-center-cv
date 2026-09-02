@@ -18,6 +18,15 @@ export type CheatLive = {
     jawOpen: number | null;
     headDown: boolean;
     headTurn: boolean;
+    headSource: 'shoulder' | 'face' | null;
+    pitchBase: number | null;
+    yawBase: number | null;
+    pitchDelta: number | null;
+    yawDelta: number | null;
+    shoulderDropBase: number | null;
+    shoulderYawBase: number | null;
+    shoulderDropDelta: number | null;
+    shoulderYawDelta: number | null;
     gazeAway: boolean;
     gazeDirection: GazeDirection | null;
     gazeLook: string;
