@@ -1,3 +1,4 @@
+import { irisGazeFromLandmarks } from '../gaze/iris.ts';
 import type { FaceLandmarkPoint } from '../face/types';
 
 const dist = (a: FaceLandmarkPoint, b: FaceLandmarkPoint) => (
@@ -20,33 +21,10 @@ export const poseFromLandmarks = (lm: FaceLandmarkPoint[]) => {
     return { pitch, yaw };
 };
 
-export const gazeXFromLandmarks = (lm: FaceLandmarkPoint[]) => {
-    if (!lm || lm.length <= 477) return null;
-    const eyeRatio = (outerIdx: number, innerIdx: number, irisIdx: number[]) => {
-        const outer = lm[outerIdx];
-        const inner = lm[innerIdx];
-        if (!outer || !inner) return null;
-        const leftX = Math.min(outer.x, inner.x);
-        const rightX = Math.max(outer.x, inner.x);
-        const width = rightX - leftX;
-        if (width <= 1e-6) return null;
-        let irisSum = 0;
-        let irisN = 0;
-        for (const index of irisIdx) {
-            const point = lm[index];
-            if (!point) continue;
-            irisSum += point.x;
-            irisN += 1;
-        }
-        if (!irisN) return null;
-        return (irisSum / irisN - leftX) / width - 0.5;
-    };
-    const left = eyeRatio(33, 133, [468, 469, 470, 471, 472]);
-    const right = eyeRatio(362, 263, [473, 474, 475, 476, 477]);
-    const vals = [left, right].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-    if (!vals.length) return null;
-    return vals.reduce((sum, value) => sum + value, 0) / vals.length;
-};
+/** 虹膜中心相对眼眶中线的水平偏移。眼眶用整圈轮廓，不再只用内外眼角。 */
+export const gazeXFromLandmarks = (lm: FaceLandmarkPoint[]) => irisGazeFromLandmarks(lm).gazeX;
+
+export const gazeYFromLandmarks = (lm: FaceLandmarkPoint[]) => irisGazeFromLandmarks(lm).gazeY;
 
 /** 嘴部开合度：内唇上下距 / 嘴角距。火山文档缺口，P2 脚本未用。 */
 export const mouthAspectRatio = (lm: FaceLandmarkPoint[]) => {

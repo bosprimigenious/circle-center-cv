@@ -1,5 +1,6 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-import { getObjectFitMapping, mapFramePointToOverlay } from './overlayFit';
+import type { GazeOverlay, NormalizedBox } from '../gaze/types';
+import { getObjectFitMapping, mapFramePointToOverlay, type OverlayFitMapping } from './overlayFit';
 import type { FaceFrameResult, FaceLandmarkPoint } from './types';
 
 type Connection = { start: number; end: number };
@@ -29,6 +30,105 @@ const drawConnections = (
         ctx.lineTo(to.x, to.y);
     }
     ctx.stroke();
+};
+
+const mapBox = (
+    box: NormalizedBox,
+    frameWidth: number,
+    frameHeight: number,
+    mapping: OverlayFitMapping,
+) => {
+    const topLeft = mapFramePointToOverlay(box.x * frameWidth, box.y * frameHeight, mapping);
+    const bottomRight = mapFramePointToOverlay(
+        (box.x + box.width) * frameWidth,
+        (box.y + box.height) * frameHeight,
+        mapping,
+    );
+    return {
+        x: topLeft.x,
+        y: topLeft.y,
+        width: bottomRight.x - topLeft.x,
+        height: bottomRight.y - topLeft.y,
+    };
+};
+
+const drawOrbitBox = (ctx: CanvasRenderingContext2D, box: ReturnType<typeof mapBox>, color: string) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.3;
+    ctx.strokeRect(box.x, box.y, box.width, box.height);
+};
+
+const drawIrisEllipse = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    radiusX: number,
+    radiusY: number,
+    color: string,
+) => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.ellipse(x, y, Math.max(2, radiusX), Math.max(2, radiusY), 0, 0, Math.PI * 2);
+    ctx.stroke();
+};
+
+const drawArrow = (
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    color: string,
+) => {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dx, y + dy);
+    ctx.stroke();
+    const angle = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(x + dx, y + dy);
+    ctx.lineTo(x + dx - 8 * Math.cos(angle - 0.4), y + dy - 8 * Math.sin(angle - 0.4));
+    ctx.lineTo(x + dx - 8 * Math.cos(angle + 0.4), y + dy - 8 * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fill();
+};
+
+const drawGazeOverlay = (
+    ctx: CanvasRenderingContext2D,
+    gaze: GazeOverlay,
+    frameWidth: number,
+    frameHeight: number,
+    mapping: OverlayFitMapping,
+) => {
+    const mapPt = (x: number, y: number) => mapFramePointToOverlay(x * frameWidth, y * frameHeight, mapping);
+    if (gaze.leftOrbit) drawOrbitBox(ctx, mapBox(gaze.leftOrbit, frameWidth, frameHeight, mapping), '#4ade80');
+    if (gaze.rightOrbit) drawOrbitBox(ctx, mapBox(gaze.rightOrbit, frameWidth, frameHeight, mapping), '#4ade80');
+    const scaleX = mapping.scaleX * frameWidth;
+    const scaleY = mapping.scaleY * frameHeight;
+    if (gaze.leftIris) {
+        const pt = mapPt(gaze.leftIris.x, gaze.leftIris.y);
+        drawIrisEllipse(ctx, pt.x, pt.y, gaze.leftIris.radius * scaleX, gaze.leftIris.radius * scaleY, '#38bdf8');
+    }
+    if (gaze.rightIris) {
+        const pt = mapPt(gaze.rightIris.x, gaze.rightIris.y);
+        drawIrisEllipse(ctx, pt.x, pt.y, gaze.rightIris.radius * scaleX, gaze.rightIris.radius * scaleY, '#38bdf8');
+    }
+    const origin = gaze.origin ? mapPt(gaze.origin.x, gaze.origin.y) : null;
+    if (origin && gaze.irisGazeX != null) {
+        const dx = gaze.irisGazeX * 90;
+        const dy = (gaze.irisGazeY ?? 0) * 70;
+        drawArrow(ctx, origin.x, origin.y, dx, dy, '#7dd3fc');
+    }
+    if (origin && gaze.l2cs) {
+        const length = 72;
+        const dx = -Math.sin(gaze.l2cs.yaw) * Math.cos(gaze.l2cs.pitch) * length;
+        const dy = -Math.sin(gaze.l2cs.pitch) * length;
+        drawArrow(ctx, origin.x, origin.y + 10, dx, dy, '#fb923c');
+    }
 };
 
 const drawPointLattice = (ctx: CanvasRenderingContext2D, points: FaceLandmarkPoint[]) => {
@@ -96,6 +196,9 @@ export const drawFaceOverlay = (
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, '#38bdf8', 1.8);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, '#38bdf8', 1.8);
         drawPointLattice(ctx, points);
+        if (result.gaze && faceIndex === 0) {
+            drawGazeOverlay(ctx, result.gaze, result.frameWidth, result.frameHeight, mapping);
+        }
 
         const box = face.box;
         const topLeft = mapFramePointToOverlay(box.x * result.frameWidth, box.y * result.frameHeight, mapping);

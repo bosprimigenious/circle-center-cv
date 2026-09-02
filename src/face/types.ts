@@ -1,4 +1,5 @@
 import type { CheatSnapshot } from '../cheat/types';
+import type { GazeOverlay } from '../gaze/types';
 
 export type FaceLandmarkPoint = {
     x: number;
@@ -49,4 +50,5 @@ export type FaceFrameResult = {
     engine: string;
     error?: string;
     cheat?: CheatSnapshot | null;
+    gaze?: GazeOverlay | null;
 };

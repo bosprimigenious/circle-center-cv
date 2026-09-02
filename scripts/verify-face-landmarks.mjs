@@ -87,6 +87,11 @@ if (!faceView.includes("sourceMode === 'image' ? 'IMAGE' : 'VIDEO'")) {
     failures.push('file video must use VIDEO runningMode (detectForVideo), not IMAGE');
 }
 if (!faceView.includes('CheatSession')) failures.push('FaceView missing CheatSession for P2 video signals');
+if (!faceView.includes('estimateGazeFromBox')) failures.push('FaceView missing second-model MobileGaze infer');
+if (!faceView.includes('irisGazeFromLandmarks')) failures.push('FaceView missing 眼眶 iris path');
+if (/疲劳/.test(faceView)) failures.push('fatigue detection was added; it is out of scope');
+if (!overlay.includes('drawOrbitBox')) failures.push('overlay missing 眼眶 boxes');
+if (!overlay.includes('drawIrisEllipse')) failures.push('overlay missing iris ellipse');
 
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');

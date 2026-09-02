@@ -6,6 +6,11 @@ export type CheatLive = {
     pitch: number | null;
     yaw: number | null;
     gazeX: number | null;
+    gazeY: number | null;
+    l2csYaw: number | null;
+    l2csPitch: number | null;
+    irisLeftR: number | null;
+    irisRightR: number | null;
     mar: number | null;
     ear: number | null;
     jawOpen: number | null;
@@ -73,4 +78,6 @@ export type CheatFrameInput = {
     jawOpen?: number | null;
     imageData?: ImageData;
     forceSample?: boolean;
+    l2cs?: { yaw: number; pitch: number } | null;
+    gazeEngine?: string;
 };

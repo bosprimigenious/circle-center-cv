@@ -8,10 +8,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
+      // Use the extern-wasm build so GitHub Pages serves one ORT wasm from /ort/.
+      'onnxruntime-web/wasm': path.resolve(import.meta.dirname, 'node_modules/onnxruntime-web/dist/ort.wasm.min.mjs'),
     },
   },
   optimizeDeps: {
-    exclude: ['@mediapipe/tasks-vision'],
+    exclude: ['@mediapipe/tasks-vision', 'onnxruntime-web'],
   },
-  assetsInclude: ['**/*.wasm', '**/*.task'],
+  assetsInclude: ['**/*.wasm', '**/*.task', '**/*.onnx'],
 });

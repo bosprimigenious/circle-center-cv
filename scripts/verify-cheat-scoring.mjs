@@ -8,9 +8,16 @@ import {
 } from '../src/cheat/scoring.ts';
 import {
     gazeXFromLandmarks,
+    gazeYFromLandmarks,
     mouthAspectRatio,
     poseFromLandmarks,
 } from '../src/cheat/geometry.ts';
+import {
+    PERSON_LEFT_IRIS,
+    PERSON_LEFT_ORBIT,
+    PERSON_RIGHT_IRIS,
+    PERSON_RIGHT_ORBIT,
+} from '../src/gaze/iris.ts';
 
 const cases = [
     [['A-1'], 100, '是'],
@@ -46,16 +53,18 @@ const points = Array.from({ length: 478 }, () => ({ x: 0.5, y: 0.5, z: 0 }));
 points[1] = { x: 0.5, y: 0.5, z: 0 };
 points[10] = { x: 0.5, y: 0.2, z: 0 };
 points[152] = { x: 0.5, y: 0.8, z: 0 };
-points[33] = { x: 0.35, y: 0.4, z: 0 };
-points[263] = { x: 0.65, y: 0.4, z: 0 };
-points[133] = { x: 0.45, y: 0.4, z: 0 };
-points[362] = { x: 0.55, y: 0.4, z: 0 };
+for (const index of PERSON_RIGHT_ORBIT) points[index] = { x: 0.4, y: 0.4, z: 0 };
+points[33] = { x: 0.35, y: 0.38, z: 0 };
+points[133] = { x: 0.45, y: 0.42, z: 0 };
+for (const index of PERSON_LEFT_ORBIT) points[index] = { x: 0.6, y: 0.4, z: 0 };
+points[263] = { x: 0.65, y: 0.42, z: 0 };
+points[362] = { x: 0.55, y: 0.38, z: 0 };
 points[13] = { x: 0.5, y: 0.62, z: 0 };
 points[14] = { x: 0.5, y: 0.72, z: 0 };
 points[61] = { x: 0.4, y: 0.67, z: 0 };
 points[291] = { x: 0.6, y: 0.67, z: 0 };
-for (const index of [468, 469, 470, 471, 472]) points[index] = { x: 0.4, y: 0.4, z: 0 };
-for (const index of [473, 474, 475, 476, 477]) points[index] = { x: 0.6, y: 0.4, z: 0 };
+for (const index of PERSON_RIGHT_IRIS) points[index] = { x: 0.4, y: 0.4, z: 0 };
+for (const index of PERSON_LEFT_IRIS) points[index] = { x: 0.6, y: 0.4, z: 0 };
 
 const pose = poseFromLandmarks(points);
 assert.ok(pose);
@@ -64,7 +73,10 @@ assert.equal(Number(pose.yaw.toFixed(4)), 0);
 
 const gaze = gazeXFromLandmarks(points);
 assert.ok(gaze != null);
-assert.ok(Math.abs(gaze) < 1e-6);
+assert.ok(Math.abs(gaze) < 0.08, `gazeX ${gaze}`);
+const gazeY = gazeYFromLandmarks(points);
+assert.ok(gazeY != null);
+assert.ok(Math.abs(gazeY) < 0.2, `gazeY ${gazeY}`);
 
 const mar = mouthAspectRatio(points);
 assert.ok(mar != null);

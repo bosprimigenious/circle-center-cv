@@ -1,5 +1,7 @@
 public/mediapipe/
 public/models/*.task
+public/models/*.onnx
+public/ort/
 logs
 *.log
 npm-debug.log*

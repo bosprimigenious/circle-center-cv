@@ -6,12 +6,21 @@ import {
     warmupFaceLandmarker,
 } from '../../face/landmarker';
 import { CheatSession } from '../../cheat/session';
+import { irisGazeFromLandmarks } from '../../gaze/iris';
+import {
+    estimateGazeFromBox,
+    getGazeEngineLabel,
+    subscribeGazeEngineStatus,
+    warmupGazeEstimator,
+} from '../../gaze/l2cs';
+import type { L2csGaze } from '../../gaze/types';
 import { drawFaceOverlay } from '../../face/overlay';
 import type { FaceFrameResult } from '../../face/types';
 import './FaceView.css';
 
 const DETECT_INTERVAL_MS = 66;
 const PANEL_INTERVAL_MS = 200;
+const L2CS_INTERVAL_MS = 180;
 
 type SourceMode = 'camera' | 'image' | 'video';
 
@@ -38,6 +47,9 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const lastCoveredAtRef = useRef(0);
     const lastVideoTimeRef = useRef(0);
     const coveredCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const l2csBusyRef = useRef(false);
+    const lastL2csRef = useRef<L2csGaze | null>(null);
+    const lastL2csAtRef = useRef(0);
 
     const [sourceMode, setSourceMode] = useState<SourceMode>('camera');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -63,20 +75,24 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
 
     useEffect(() => {
         const started = performance.now();
-        const unsubscribe = subscribeFaceEngineStatus(setEngine);
+        const unsubscribeFace = subscribeFaceEngineStatus(setEngine);
+        const unsubscribeGaze = subscribeGazeEngineStatus(() => {
+            setEngine(`${getFaceEngineLabel()} · ${getGazeEngineLabel()}`);
+        });
         const tick = window.setInterval(() => {
             setLoadElapsed(Math.max(0, Math.round((performance.now() - started) / 1000)));
         }, 250);
-        void warmupFaceLandmarker()
+        void Promise.all([warmupFaceLandmarker(), warmupGazeEstimator()])
             .then(() => {
                 setEngineReady(true);
-                setEngine(getFaceEngineLabel());
+                setEngine(`${getFaceEngineLabel()} · ${getGazeEngineLabel()}`);
             })
             .catch((error) => {
                 setEngine(error instanceof Error ? error.message : String(error));
             });
         return () => {
-            unsubscribe();
+            unsubscribeFace();
+            unsubscribeGaze();
             window.clearInterval(tick);
         };
     }, []);
@@ -99,6 +115,8 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         sessionOriginRef.current = performance.now();
         lastCoveredAtRef.current = 0;
         lastVideoTimeRef.current = 0;
+        lastL2csRef.current = null;
+        lastL2csAtRef.current = 0;
     }, []);
 
     const grabCoveredFrame = useCallback((media: HTMLVideoElement | HTMLImageElement) => {
@@ -202,21 +220,64 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     if (source.currentTime + 0.5 < lastVideoTimeRef.current) resetCheat();
                     lastVideoTimeRef.current = source.currentTime;
                 }
+                const face = next.faces[0];
+                const iris = irisGazeFromLandmarks(face?.landmarks);
+                const dueL2cs = sourceMode === 'image' || now - lastL2csAtRef.current >= L2CS_INTERVAL_MS;
+                if (face && dueL2cs && (sourceMode === 'image' || !l2csBusyRef.current)) {
+                    lastL2csAtRef.current = now;
+                    const runL2cs = async () => {
+                        l2csBusyRef.current = true;
+                        try {
+                            const gaze = await estimateGazeFromBox(source, face.box);
+                            if (gaze) lastL2csRef.current = gaze;
+                        } catch (error) {
+                            console.warn('MobileGaze infer failed', error);
+                        } finally {
+                            l2csBusyRef.current = false;
+                        }
+                    };
+                    if (sourceMode === 'image') await runL2cs();
+                    else void runL2cs();
+                }
+                const l2cs = lastL2csRef.current
+                    ? { yaw: lastL2csRef.current.yaw, pitch: lastL2csRef.current.pitch }
+                    : null;
                 const tSec = sourceMode === 'video' && source instanceof HTMLVideoElement
                     ? source.currentTime
                     : (now - sessionOriginRef.current) / 1000;
                 const forceSample = sourceMode === 'image' || now - lastCoveredAtRef.current >= 2000;
                 if (forceSample) lastCoveredAtRef.current = now;
-                const jawOpen = next.faces[0]?.blendshapes.find((item) => item.name === 'jawOpen')?.score ?? null;
+                const jawOpen = face?.blendshapes.find((item) => item.name === 'jawOpen')?.score ?? null;
+                const gazeEngine = l2cs
+                    ? 'mediapipe-iris-orbit+mobilegaze-l2cs'
+                    : 'mediapipe-iris-orbit';
                 const cheat = cheatSessionRef.current.ingest({
                     tSec,
-                    landmarks: next.faces[0]?.landmarks ?? null,
+                    landmarks: face?.landmarks ?? null,
                     faceCount: next.faceCount,
                     jawOpen,
                     imageData: forceSample ? grabCoveredFrame(source) : undefined,
                     forceSample,
+                    l2cs,
+                    gazeEngine,
                 });
-                if (!cancelled) publish({ ...next, cheat });
+                const gaze = {
+                    leftOrbit: iris.left?.orbit ?? null,
+                    rightOrbit: iris.right?.orbit ?? null,
+                    leftIris: iris.left
+                        ? { x: iris.left.center.x, y: iris.left.center.y, radius: iris.left.radius }
+                        : null,
+                    rightIris: iris.right
+                        ? { x: iris.right.center.x, y: iris.right.center.y, radius: iris.right.radius }
+                        : null,
+                    origin: face?.landmarks[1]
+                        ? { x: face.landmarks[1].x, y: face.landmarks[1].y }
+                        : null,
+                    l2cs,
+                    irisGazeX: iris.gazeX,
+                    irisGazeY: iris.gazeY,
+                };
+                if (!cancelled) publish({ ...next, cheat, gaze });
             } finally {
                 busyRef.current = false;
             }
@@ -415,7 +476,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">
                     <strong>{hud}</strong>
-                    <span>{engine} · 478 点网格含虹膜，不是 6 点检测器</span>
+                    <span>{engine} · 478 网格 + 眼眶虹膜 + MobileGaze 视线</span>
                 </div>
             </div>
         </div>

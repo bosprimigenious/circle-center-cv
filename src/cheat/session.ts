@@ -1,7 +1,7 @@
+import { irisGazeFromLandmarks } from '../gaze/iris.ts';
 import {
     brightnessAndGray,
     eyeAspectRatio,
-    gazeXFromLandmarks,
     meanAbsDiff,
     median,
     mouthAspectRatio,
@@ -14,6 +14,9 @@ type Sample = {
     time: number;
     pose: { pitch: number; yaw: number } | null;
     gaze_x: number | null;
+    gaze_y: number | null;
+    l2cs_yaw: number | null;
+    l2cs_pitch: number | null;
     head_down: boolean;
     head_turn: boolean;
     gaze_away: boolean;
@@ -52,6 +55,7 @@ export class CheatSession {
     private readSuccess = 0;
     private prevGray: Float32Array | null = null;
     private lastSnapshot: CheatSnapshot | null = null;
+    private gazeEngine = 'mediapipe-iris-orbit';
 
     reset() {
         this.samples = [];
@@ -62,6 +66,7 @@ export class CheatSession {
         this.readSuccess = 0;
         this.prevGray = null;
         this.lastSnapshot = null;
+        this.gazeEngine = 'mediapipe-iris-orbit';
     }
 
     ingest(input: CheatFrameInput): CheatSnapshot {
@@ -70,10 +75,14 @@ export class CheatSession {
 
         const lm = input.landmarks;
         const pose = lm ? poseFromLandmarks(lm) : null;
-        const gazeX = lm ? gazeXFromLandmarks(lm) : null;
+        const iris = lm ? irisGazeFromLandmarks(lm) : { left: null, right: null, gazeX: null, gazeY: null };
+        const gazeX = iris.gazeX;
+        const gazeY = iris.gazeY;
+        const l2cs = input.l2cs ?? null;
         const mar = lm ? mouthAspectRatio(lm) : null;
         const ear = lm ? eyeAspectRatio(lm) : null;
         const jawOpen = input.jawOpen ?? null;
+        if (input.gazeEngine) this.gazeEngine = input.gazeEngine;
 
         const due = input.forceSample || input.tSec - this.lastSampleAt >= THRESHOLDS.VIDEO_INTERVAL_SEC;
         if (due) {
@@ -91,6 +100,9 @@ export class CheatSession {
                 time: input.tSec,
                 pose,
                 gaze_x: gazeX,
+                gaze_y: gazeY,
+                l2cs_yaw: l2cs?.yaw ?? null,
+                l2cs_pitch: l2cs?.pitch ?? null,
                 head_down: false,
                 head_turn: false,
                 gaze_away: false,
@@ -101,7 +113,7 @@ export class CheatSession {
 
         const video = this.buildVideoRes();
         const baseline = this.baseline();
-        const live = this.liveFrom(pose, gazeX, mar, ear, jawOpen, baseline);
+        const live = this.liveFrom(pose, gazeX, gazeY, l2cs, iris, mar, ear, jawOpen, baseline);
         const videoSignals = extractVideoSignals(video);
         const scored = computeScore(videoSignals);
         const snapshot: CheatSnapshot = { live, video, videoSignals, scored };
@@ -123,8 +135,36 @@ export class CheatSession {
             pitch: median(pool.map((sample) => sample.pose?.pitch)),
             yaw: median(pool.map((sample) => sample.pose?.yaw)),
             gaze: median(pool.map((sample) => sample.gaze_x)),
+            l2csYaw: median(pool.map((sample) => sample.l2cs_yaw)),
             poseOk: pool.length >= THRESHOLDS.BASELINE_MIN_SAMPLES && median(pool.map((sample) => sample.pose?.pitch)) != null,
         };
+    }
+
+    private gazeDecision(
+        gazeX: number | null,
+        l2csYaw: number | null,
+        baseline: ReturnType<CheatSession['baseline']>,
+    ): { away: boolean; direction: GazeDirection | null } {
+        let away = false;
+        let direction: GazeDirection | null = null;
+        if (baseline.gaze != null && gazeX != null) {
+            const delta = gazeX - baseline.gaze;
+            if (delta < -THRESHOLDS.GAZE_AWAY_DELTA) {
+                away = true;
+                direction = 'left';
+            } else if (delta > THRESHOLDS.GAZE_AWAY_DELTA) {
+                away = true;
+                direction = 'right';
+            }
+        }
+        if (baseline.l2csYaw != null && l2csYaw != null) {
+            const delta = l2csYaw - baseline.l2csYaw;
+            if (Math.abs(delta) > THRESHOLDS.L2CS_YAW_AWAY_RAD) {
+                away = true;
+                direction = delta < 0 ? 'left' : 'right';
+            }
+        }
+        return { away, direction };
     }
 
     private relabelSamples() {
@@ -147,17 +187,11 @@ export class CheatSession {
                     turn += 1;
                 }
             }
-            if (baseline.gaze != null && sample.gaze_x != null) {
-                const delta = sample.gaze_x - baseline.gaze;
-                if (delta < -THRESHOLDS.GAZE_AWAY_DELTA) {
-                    sample.gaze_away = true;
-                    sample.gaze_direction = 'left';
-                    away += 1;
-                } else if (delta > THRESHOLDS.GAZE_AWAY_DELTA) {
-                    sample.gaze_away = true;
-                    sample.gaze_direction = 'right';
-                    away += 1;
-                }
+            const gaze = this.gazeDecision(sample.gaze_x, sample.l2cs_yaw, baseline);
+            if (gaze.away) {
+                sample.gaze_away = true;
+                sample.gaze_direction = gaze.direction;
+                away += 1;
             }
         }
         return { down, turn, away };
@@ -166,6 +200,9 @@ export class CheatSession {
     private liveFrom(
         pose: { pitch: number; yaw: number } | null,
         gazeX: number | null,
+        gazeY: number | null,
+        l2cs: { yaw: number; pitch: number } | null,
+        iris: ReturnType<typeof irisGazeFromLandmarks>,
         mar: number | null,
         ear: number | null,
         jawOpen: number | null,
@@ -173,33 +210,27 @@ export class CheatSession {
     ): CheatLive {
         let headDown = false;
         let headTurn = false;
-        let gazeAway = false;
-        let gazeDirection: GazeDirection | null = null;
         if (baseline.poseOk && pose && baseline.pitch != null && baseline.yaw != null) {
             headDown = pose.pitch - baseline.pitch > THRESHOLDS.PITCH_DOWN_DELTA;
             headTurn = Math.abs(pose.yaw - baseline.yaw) > THRESHOLDS.YAW_TURN_DELTA;
         }
-        if (baseline.gaze != null && gazeX != null) {
-            const delta = gazeX - baseline.gaze;
-            if (delta < -THRESHOLDS.GAZE_AWAY_DELTA) {
-                gazeAway = true;
-                gazeDirection = 'left';
-            } else if (delta > THRESHOLDS.GAZE_AWAY_DELTA) {
-                gazeAway = true;
-                gazeDirection = 'right';
-            }
-        }
+        const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, baseline);
         return {
             pitch: pose?.pitch ?? null,
             yaw: pose?.yaw ?? null,
             gazeX,
+            gazeY,
+            l2csYaw: l2cs?.yaw ?? null,
+            l2csPitch: l2cs?.pitch ?? null,
+            irisLeftR: iris.left?.radius ?? null,
+            irisRightR: iris.right?.radius ?? null,
             mar,
             ear,
             jawOpen,
             headDown,
             headTurn,
-            gazeAway,
-            gazeDirection,
+            gazeAway: gaze.away,
+            gazeDirection: gaze.direction,
             mouthOpen: (mar != null && mar > 0.45) || (jawOpen != null && jawOpen > 0.35),
         };
     }
@@ -207,8 +238,8 @@ export class CheatSession {
     private buildVideoRes(): CheatVideoRes {
         const counts = this.relabelSamples();
         const poseAvailable = this.samples.filter((sample) => sample.pose).length;
-        const gazeAvailable = this.samples.filter((sample) => sample.gaze_x != null).length;
-        const faceN = this.samples.filter((sample) => sample.pose || sample.gaze_x != null).length;
+        const gazeAvailable = this.samples.filter((sample) => sample.gaze_x != null || sample.l2cs_yaw != null).length;
+        const faceN = this.samples.filter((sample) => sample.pose || sample.gaze_x != null || sample.l2cs_yaw != null).length;
         const noFace = this.samples.length - faceN;
         const readN = this.readSuccess;
         const baseline = this.baseline();
@@ -216,10 +247,11 @@ export class CheatSession {
         const staticRatio = readN > 1 ? this.staticCount / (readN - 1) : null;
         const downRatio = baseline.poseOk && poseAvailable > 0 ? counts.down / poseAvailable : null;
         const turnRatio = baseline.poseOk && poseAvailable > 0 ? counts.turn / poseAvailable : null;
-        const awayRatio = baseline.gaze != null && gazeAvailable > 0 ? counts.away / gazeAvailable : null;
+        const gazeBaselineOk = baseline.gaze != null || baseline.l2csYaw != null;
+        const awayRatio = gazeBaselineOk && gazeAvailable > 0 ? counts.away / gazeAvailable : null;
         const qualityFlags: string[] = [];
         if (this.samples.length && !baseline.poseOk) qualityFlags.push('baseline_failed');
-        if (this.samples.length && baseline.gaze == null) qualityFlags.push('gaze_baseline_unavailable');
+        if (this.samples.length && !gazeBaselineOk) qualityFlags.push('gaze_baseline_unavailable');
 
         let status = 'not_started';
         let error = '';
@@ -262,7 +294,7 @@ export class CheatSession {
             down_ratio: downRatio,
             away_ratio: awayRatio,
             head_turn_ratio: turnRatio,
-            gaze_engine: 'mediapipe-face-landmarker-478',
+            gaze_engine: this.gazeEngine,
             gaze: {
                 status,
                 error,

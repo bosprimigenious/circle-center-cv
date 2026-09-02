@@ -41,10 +41,13 @@ export default function App() {
             { label: '转头率', value: formatPct(video.head_turn_ratio), className: ratioClass(video.head_turn_ratio, 0.3) },
             { label: '视线偏离', value: formatPct(video.away_ratio), className: ratioClass(video.away_ratio, 0.3) },
             { label: '采样', value: `${video.sample_count} · ${gaze.status}` },
+            { label: '视线引擎', value: video.gaze_engine },
             { label: '本帧低头', value: live.headDown ? '是' : '否', className: live.headDown ? 'is-warn' : '' },
             { label: '本帧侧视', value: live.gazeAway ? (live.gazeDirection ?? '是') : '否', className: live.gazeAway ? 'is-warn' : '' },
             { label: 'pitch / yaw', value: `${formatNum(live.pitch)} / ${formatNum(live.yaw)}` },
-            { label: '虹膜 gazeX', value: formatNum(live.gazeX) },
+            { label: '虹膜 gazeX / Y', value: `${formatNum(live.gazeX)} / ${formatNum(live.gazeY)}` },
+            { label: 'L2CS yaw / pitch°', value: `${formatNum(live.l2csYaw != null ? live.l2csYaw * 180 / Math.PI : null, 1)} / ${formatNum(live.l2csPitch != null ? live.l2csPitch * 180 / Math.PI : null, 1)}` },
+            { label: '虹膜半径 左/右', value: `${formatNum(live.irisLeftR, 4)} / ${formatNum(live.irisRightR, 4)}` },
             { label: '嘴部 MAR', value: formatNum(live.mar) },
             { label: '眼 EAR', value: formatNum(live.ear) },
             { label: '张嘴', value: live.mouthOpen ? `是 · jawOpen ${formatNum(live.jawOpen, 2)}` : `否 · ${formatNum(live.jawOpen, 2)}` },
@@ -81,11 +84,11 @@ export default function App() {
         <div className="app-shell">
             <header className="app-header">
                 <div>
-                    <p className="app-kicker">检测 · 稠密关键点 · 视觉反作弊</p>
-                    <h1>人脸网格 478 点</h1>
+                    <p className="app-kicker">检测 · 稠密关键点 · 虹膜 · 视线</p>
+                    <h1>人脸网格 478 点 + MobileGaze</h1>
                 </div>
                 <p className="app-note">
-                    MediaPipe Face Landmarker 478 点。右侧视觉通道对齐 P2 脚本指标：遮挡 / 静止 / 无人脸 / 低头 / 转头 / 虹膜视线，以及飞书缺口里的嘴部 MAR。不含文本 LLM1、声纹、人脸 1:1、ASR 音视频同步。文件不上传。
+                    MediaPipe Face Landmarker 478 点不动。眼眶 crop 升级虹膜（圆心 + 椭圆）。第二模型 MobileGaze MobileOne-S0（L2CS-Net / Gaze360）吃 478 人脸框，输出 yaw/pitch。不含疲劳检测、文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
                 </p>
             </header>
             <main className="app-main">
