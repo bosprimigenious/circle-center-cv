@@ -56,6 +56,13 @@ const source = await import('node:fs/promises').then((fs) => fs.readFile(
 if (source.includes('FaceDetector.createFromOptions')) failures.push('landmarker.ts still uses Face Detector');
 if (!source.includes('outputFaceBlendshapes: true')) failures.push('blendshapes not requested');
 if (!source.includes('numFaces: 4')) failures.push('multi-face not enabled');
+if (!source.includes("mode: RunningMode = 'VIDEO'") && !source.includes("= 'VIDEO'")) {
+    failures.push('camera landmarker must default to VIDEO at create time');
+}
+if (source.includes("let runningMode: RunningMode = 'IMAGE'") || source.includes("let runningMode: 'IMAGE' | 'VIDEO' = 'IMAGE'")) {
+    failures.push('runningMode still defaults to IMAGE; detectForVideo will throw');
+}
+if (!source.includes('warmupFaceLandmarker')) failures.push('missing warmupFaceLandmarker for parallel camera+model load');
 
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');

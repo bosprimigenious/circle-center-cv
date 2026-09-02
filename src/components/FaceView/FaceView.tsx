@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { detectFaceLandmarks } from '../../face/landmarker';
+import {
+    detectFaceLandmarks,
+    getFaceEngineLabel,
+    subscribeFaceEngineStatus,
+    warmupFaceLandmarker,
+} from '../../face/landmarker';
 import { drawFaceOverlay } from '../../face/overlay';
 import type { FaceFrameResult } from '../../face/types';
 import '../CameraView/CameraView.css';
@@ -24,11 +29,33 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const [imageName, setImageName] = useState('未选择');
     const [errorMsg, setErrorMsg] = useState('');
     const [engine, setEngine] = useState('正在加载 Face Landmarker…');
+    const [engineReady, setEngineReady] = useState(false);
+    const [loadElapsed, setLoadElapsed] = useState(0);
     const [result, setResult] = useState<FaceFrameResult | null>(null);
 
     useEffect(() => {
         onFrameResultRef.current = onFrameResult;
     }, [onFrameResult]);
+
+    useEffect(() => {
+        const started = performance.now();
+        const unsubscribe = subscribeFaceEngineStatus(setEngine);
+        const tick = window.setInterval(() => {
+            setLoadElapsed(Math.max(0, Math.round((performance.now() - started) / 1000)));
+        }, 250);
+        void warmupFaceLandmarker()
+            .then(() => {
+                setEngineReady(true);
+                setEngine(getFaceEngineLabel());
+            })
+            .catch((error) => {
+                setEngine(error instanceof Error ? error.message : String(error));
+            });
+        return () => {
+            unsubscribe();
+            window.clearInterval(tick);
+        };
+    }, []);
 
     const publish = (next: FaceFrameResult | null) => {
         latestRef.current = next;
@@ -75,6 +102,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     useEffect(() => {
         let cancelled = false;
         let frame = 0;
+        if (!engineReady) return undefined;
 
         const analyze = async () => {
             if (cancelled || busyRef.current) return;
@@ -111,7 +139,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             cancelled = true;
             window.cancelAnimationFrame(frame);
         };
-    }, [imageToken, imageUrl, sourceMode]);
+    }, [engineReady, imageToken, imageUrl, sourceMode]);
 
     useEffect(() => {
         const render = () => {
@@ -130,11 +158,13 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         };
     }, [result, sourceMode]);
 
-    const hud = result
-        ? result.faceCount > 0
-            ? `${result.faceCount} 张脸 · 每张 ${result.landmarkCount} 点（期望 ${result.expectedLandmarkCount}）`
-            : result.error ?? '未检测到人脸'
-        : '等待画面…';
+    const hud = !engineReady
+        ? `正在加载 Face Landmarker… ${loadElapsed}s`
+        : result
+            ? result.faceCount > 0
+                ? `${result.faceCount} 张脸 · 每张 ${result.landmarkCount} 点（期望 ${result.expectedLandmarkCount}）`
+                : result.error ?? '未检测到人脸'
+            : '等待画面…';
 
     return (
         <div className={`camera-container source-${sourceMode === 'image' ? 'demo' : 'camera'}`}>
