@@ -64,7 +64,7 @@
 .source-segment {
     width: fit-content;
     display: inline-grid;
-    grid-template-columns: repeat(2, auto);
+    grid-template-columns: repeat(3, auto);
     gap: 2px;
     padding: 3px;
     background: rgba(2, 6, 23, 0.72);
@@ -162,6 +162,10 @@
     padding: 0.55rem 0.9rem;
     font-weight: 700;
     cursor: pointer;
+}
+
+.camera-container.source-file-video .camera-hud {
+    bottom: 56px;
 }
 
 .camera-hud {

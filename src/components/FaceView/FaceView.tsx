@@ -12,9 +12,15 @@ import './FaceView.css';
 const DETECT_INTERVAL_MS = 66;
 const PANEL_INTERVAL_MS = 200;
 
+type SourceMode = 'camera' | 'image' | 'video';
+
 type FaceViewProps = {
     onFrameResult?: (result: FaceFrameResult | null) => void;
 };
+
+const isMp4File = (file: File) => (
+    file.type === 'video/mp4' || /\.mp4$/i.test(file.name)
+);
 
 export default function FaceView({ onFrameResult }: FaceViewProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -27,10 +33,13 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const lastDetectAtRef = useRef(0);
     const lastPanelAtRef = useRef(0);
 
-    const [sourceMode, setSourceMode] = useState<'camera' | 'image'>('camera');
+    const [sourceMode, setSourceMode] = useState<SourceMode>('camera');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [imageToken, setImageToken] = useState(0);
     const [imageName, setImageName] = useState('未选择');
+    const [videoUrl, setVideoUrl] = useState<string | null>(null);
+    const [videoName, setVideoName] = useState('未选择');
+    const [videoError, setVideoError] = useState('');
     const [errorMsg, setErrorMsg] = useState('');
     const [engine, setEngine] = useState('正在加载 Face Landmarker…');
     const [engineReady, setEngineReady] = useState(false);
@@ -66,6 +75,19 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         };
     }, []);
 
+    const revokeObjectUrl = useCallback(() => {
+        if (!objectUrlRef.current) return;
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+    }, []);
+
+    const assignObjectUrl = useCallback((file: File) => {
+        revokeObjectUrl();
+        const url = URL.createObjectURL(file);
+        objectUrlRef.current = url;
+        return url;
+    }, [revokeObjectUrl]);
+
     const paintOverlay = useCallback(() => {
         const canvas = overlayRef.current;
         if (!canvas) return;
@@ -85,11 +107,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         if (next?.engine) setEngine(next.engine);
     }, [paintOverlay]);
 
-    useEffect(() => {
-        return () => {
-            if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-        };
-    }, []);
+    useEffect(() => () => revokeObjectUrl(), [revokeObjectUrl]);
 
     useEffect(() => {
         let stream: MediaStream | null = null;
@@ -137,7 +155,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             if (source instanceof HTMLVideoElement && (source.readyState < 2 || !source.videoWidth)) return;
             if (source instanceof HTMLImageElement && (!source.complete || !source.naturalWidth)) return;
             const now = performance.now();
-            if (sourceMode === 'camera' && now - lastDetectAtRef.current < DETECT_INTERVAL_MS) {
+            if (sourceMode !== 'image' && now - lastDetectAtRef.current < DETECT_INTERVAL_MS) {
                 paintOverlay();
                 return;
             }
@@ -171,7 +189,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             cancelled = true;
             window.cancelAnimationFrame(frame);
         };
-    }, [engineReady, imageToken, imageUrl, paintOverlay, publish, sourceMode]);
+    }, [engineReady, imageToken, imageUrl, paintOverlay, publish, sourceMode, videoUrl]);
 
     useEffect(() => {
         const render = () => paintOverlay();
@@ -193,30 +211,48 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 
+    const switchMode = (next: SourceMode) => {
+        if (next === sourceMode) return;
+        setErrorMsg('');
+        setVideoError('');
+        if (next !== 'image') {
+            setImageUrl(null);
+            setImageName('未选择');
+        }
+        if (next !== 'video') {
+            setVideoUrl(null);
+            setVideoName('未选择');
+        }
+        revokeObjectUrl();
+        setSourceMode(next);
+        publish(null, true);
+    };
+
     return (
-        <div className={`camera-container source-${sourceMode === 'image' ? 'demo' : 'camera'}`}>
+        <div className={`camera-container source-${sourceMode === 'image' ? 'demo' : 'camera'}${sourceMode === 'video' ? ' source-file-video' : ''}`}>
             <div className="camera-video-wrapper">
                 <div className="camera-source-panel">
                     <div className="source-segment" role="group" aria-label="图像输入源">
                         <button
                             type="button"
                             className={sourceMode === 'camera' ? 'is-active' : ''}
-                            onClick={() => {
-                                setSourceMode('camera');
-                                publish(null, true);
-                            }}
+                            onClick={() => switchMode('camera')}
                         >
                             摄像头
                         </button>
                         <button
                             type="button"
                             className={sourceMode === 'image' ? 'is-active' : ''}
-                            onClick={() => {
-                                setErrorMsg('');
-                                setSourceMode('image');
-                            }}
+                            onClick={() => switchMode('image')}
                         >
                             本地图片
+                        </button>
+                        <button
+                            type="button"
+                            className={sourceMode === 'video' ? 'is-active' : ''}
+                            onClick={() => switchMode('video')}
+                        >
+                            本地视频
                         </button>
                     </div>
                     {sourceMode === 'image' && (
@@ -229,16 +265,40 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                                     onChange={(event) => {
                                         const file = event.target.files?.[0];
                                         if (!file) return;
-                                        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-                                        const url = URL.createObjectURL(file);
-                                        objectUrlRef.current = url;
-                                        setImageUrl(url);
+                                        setImageUrl(assignObjectUrl(file));
                                         setImageName(file.name);
                                         event.currentTarget.value = '';
                                     }}
                                 />
                             </label>
                             <span className="demo-image-name">{imageName}</span>
+                        </div>
+                    )}
+                    {sourceMode === 'video' && (
+                        <div className="demo-source-tools">
+                            <label className="demo-file-button">
+                                选择 MP4
+                                <input
+                                    type="file"
+                                    accept="video/mp4,.mp4"
+                                    onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        event.currentTarget.value = '';
+                                        if (!file) return;
+                                        if (!isMp4File(file)) {
+                                            setVideoError('请选择 MP4 文件（建议 H.264）。');
+                                            setVideoUrl(null);
+                                            setVideoName(file.name);
+                                            return;
+                                        }
+                                        setVideoError('');
+                                        setVideoUrl(assignObjectUrl(file));
+                                        setVideoName(file.name);
+                                        publish(null, true);
+                                    }}
+                                />
+                            </label>
+                            <span className="demo-image-name">{videoName}</span>
                         </div>
                     )}
                 </div>
@@ -248,12 +308,16 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         <button
                             type="button"
                             className="camera-error-action"
-                            onClick={() => {
-                                setErrorMsg('');
-                                setSourceMode('image');
-                            }}
+                            onClick={() => switchMode('image')}
                         >
                             改用本地图片
+                        </button>
+                        <button
+                            type="button"
+                            className="camera-error-action"
+                            onClick={() => switchMode('video')}
+                        >
+                            改用本地视频
                         </button>
                     </div>
                 ) : sourceMode === 'image' ? (
@@ -270,8 +334,33 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                             <p>请选择一张含人脸的图片。</p>
                         </div>
                     )
+                ) : sourceMode === 'video' ? (
+                    videoError ? (
+                        <div className="camera-error">
+                            <p>{videoError}</p>
+                        </div>
+                    ) : videoUrl ? (
+                        <video
+                            key={videoUrl}
+                            ref={videoRef}
+                            className="camera-video"
+                            src={videoUrl}
+                            controls
+                            playsInline
+                            muted
+                            autoPlay
+                            loop
+                            onError={() => {
+                                setVideoError('无法解码该视频。请换成 H.264 编码的 MP4（HEVC/AV1 在部分 Chrome 上播不了）。');
+                            }}
+                        />
+                    ) : (
+                        <div className="camera-error">
+                            <p>请选择一段含人脸的 MP4。检测在浏览器里逐帧跑，文件不会上传到服务器。</p>
+                        </div>
+                    )
                 ) : (
-                    <video ref={videoRef} className="camera-video" playsInline muted autoPlay />
+                    <video key="camera" ref={videoRef} className="camera-video" playsInline muted autoPlay />
                 )}
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">

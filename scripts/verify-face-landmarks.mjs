@@ -75,6 +75,18 @@ if (source.includes("let runningMode: RunningMode = 'IMAGE'") || source.includes
 }
 if (!source.includes('warmupFaceLandmarker')) failures.push('missing warmupFaceLandmarker for parallel camera+model load');
 
+const faceView = await import('node:fs/promises').then((fs) => fs.readFile(
+    new URL('../src/components/FaceView/FaceView.tsx', import.meta.url),
+    'utf8',
+));
+if (!faceView.includes("type SourceMode = 'camera' | 'image' | 'video'")) {
+    failures.push('FaceView missing local video source mode');
+}
+if (!faceView.includes('video/mp4')) failures.push('FaceView missing video/mp4 accept');
+if (!faceView.includes("sourceMode === 'image' ? 'IMAGE' : 'VIDEO'")) {
+    failures.push('file video must use VIDEO runningMode (detectForVideo), not IMAGE');
+}
+
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');
     failures.forEach((item) => console.error(' -', item));

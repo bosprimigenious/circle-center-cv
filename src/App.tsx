@@ -45,7 +45,7 @@ export default function App() {
                     <h1>人脸网格 478 点</h1>
                 </div>
                 <p className="app-note">
-                    MediaPipe Face Landmarker：478 个 3D 点（468 网格 + 10 虹膜）。不是 6 点 Face Detector，也不是身份识别。画面上画 478 点阵和五官轮廓；不画三角网格连线。采集 640×480、检测约 15 fps。
+                    MediaPipe Face Landmarker：478 个 3D 点（468 网格 + 10 虹膜）。不是 6 点 Face Detector，也不是身份识别。可用摄像头、本地图片或本地 MP4。画面上画 478 点阵和五官轮廓；不画三角网格连线。MP4 在浏览器里逐帧检测，文件不上传。
                 </p>
             </header>
             <main className="app-main">

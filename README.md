@@ -4,7 +4,7 @@
 
 在线演示：https://bosprimigenious.github.io/circle-center-cv/
 
-摄像头需要 HTTPS；Pages 本身是 HTTPS。
+摄像头需要 HTTPS；Pages 本身是 HTTPS。本地 MP4 在浏览器里逐帧跑 Face Landmarker（VIDEO 模式），文件不上传到服务器。建议 H.264；HEVC/AV1 在部分 Chrome 上解不开。
 
 ## 仓库
 
