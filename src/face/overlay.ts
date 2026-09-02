@@ -1,8 +1,11 @@
 import { FaceLandmarker } from '@mediapipe/tasks-vision';
-import { getObjectFitMapping, mapFramePointToOverlay } from '../components/CameraView/analysis/overlayFit';
+import { getObjectFitMapping, mapFramePointToOverlay } from './overlayFit';
 import type { FaceFrameResult, FaceLandmarkPoint } from './types';
 
 type Connection = { start: number; end: number };
+
+const IRIS_CENTERS = [468, 473] as const;
+const MAX_OVERLAY_DPR = 1.25;
 
 const drawConnections = (
     ctx: CanvasRenderingContext2D,
@@ -11,17 +14,17 @@ const drawConnections = (
     color: string,
     lineWidth: number,
 ) => {
-    if (!connections) return;
+    if (!connections?.length) return;
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.beginPath();
-    connections.forEach((item) => {
-        const from = points[item.start];
-        const to = points[item.end];
-        if (!from || !to) return;
+    for (let index = 0; index < connections.length; index += 1) {
+        const from = points[connections[index].start];
+        const to = points[connections[index].end];
+        if (!from || !to) continue;
         ctx.moveTo(from.x, from.y);
         ctx.lineTo(to.x, to.y);
-    });
+    }
     ctx.stroke();
 };
 
@@ -31,12 +34,15 @@ export const drawFaceOverlay = (
     objectFit = 'cover',
 ) => {
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_OVERLAY_DPR);
     const width = Math.max(1, Math.round(rect.width));
     const height = Math.max(1, Math.round(rect.height));
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    const ctx = canvas.getContext('2d');
+    const pixelWidth = Math.max(1, Math.round(width * dpr));
+    const pixelHeight = Math.max(1, Math.round(height * dpr));
+    if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+    if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
+
+    const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true });
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
@@ -62,7 +68,6 @@ export const drawFaceOverlay = (
             return { x: mapped.x, y: mapped.y, z: point.z };
         });
 
-        drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_TESSELATION, 'rgba(125, 211, 252, 0.22)', 0.6);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, '#7dd3fc', 1.5);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LIPS, '#fda4af', 1.6);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, '#86efac', 1.4);
@@ -72,12 +77,14 @@ export const drawFaceOverlay = (
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, '#38bdf8', 1.8);
         drawConnections(ctx, points, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, '#38bdf8', 1.8);
 
-        ctx.fillStyle = 'rgba(248, 250, 252, 0.82)';
-        points.forEach((point) => {
+        ctx.fillStyle = '#38bdf8';
+        for (const index of IRIS_CENTERS) {
+            const point = points[index];
+            if (!point) continue;
             ctx.beginPath();
-            ctx.arc(point.x, point.y, 0.9, 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
             ctx.fill();
-        });
+        }
 
         const box = face.box;
         const topLeft = mapFramePointToOverlay(box.x * result.frameWidth, box.y * result.frameHeight, mapping);

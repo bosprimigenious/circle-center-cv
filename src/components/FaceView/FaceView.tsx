@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     detectFaceLandmarks,
     getFaceEngineLabel,
@@ -7,8 +7,10 @@ import {
 } from '../../face/landmarker';
 import { drawFaceOverlay } from '../../face/overlay';
 import type { FaceFrameResult } from '../../face/types';
-import '../CameraView/CameraView.css';
 import './FaceView.css';
+
+const DETECT_INTERVAL_MS = 66;
+const PANEL_INTERVAL_MS = 200;
 
 type FaceViewProps = {
     onFrameResult?: (result: FaceFrameResult | null) => void;
@@ -22,6 +24,8 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const objectUrlRef = useRef<string | null>(null);
     const onFrameResultRef = useRef(onFrameResult);
     const busyRef = useRef(false);
+    const lastDetectAtRef = useRef(0);
+    const lastPanelAtRef = useRef(0);
 
     const [sourceMode, setSourceMode] = useState<'camera' | 'image'>('camera');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -32,10 +36,15 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     const [engineReady, setEngineReady] = useState(false);
     const [loadElapsed, setLoadElapsed] = useState(0);
     const [result, setResult] = useState<FaceFrameResult | null>(null);
+    const sourceModeRef = useRef(sourceMode);
 
     useEffect(() => {
         onFrameResultRef.current = onFrameResult;
     }, [onFrameResult]);
+
+    useEffect(() => {
+        sourceModeRef.current = sourceMode;
+    }, [sourceMode]);
 
     useEffect(() => {
         const started = performance.now();
@@ -57,12 +66,24 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         };
     }, []);
 
-    const publish = (next: FaceFrameResult | null) => {
+    const paintOverlay = useCallback(() => {
+        const canvas = overlayRef.current;
+        if (!canvas) return;
+        const media = sourceModeRef.current === 'image' ? imageRef.current : videoRef.current;
+        const objectFit = media ? getComputedStyle(media).objectFit : 'cover';
+        drawFaceOverlay(canvas, latestRef.current, objectFit);
+    }, []);
+
+    const publish = useCallback((next: FaceFrameResult | null, forcePanel = false) => {
         latestRef.current = next;
+        paintOverlay();
+        const now = performance.now();
+        if (!forcePanel && now - lastPanelAtRef.current < PANEL_INTERVAL_MS) return;
+        lastPanelAtRef.current = now;
         setResult(next);
         onFrameResultRef.current?.(next);
         if (next?.engine) setEngine(next.engine);
-    };
+    }, [paintOverlay]);
 
     useEffect(() => {
         return () => {
@@ -78,7 +99,12 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         const start = async () => {
             try {
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+                    video: {
+                        width: { ideal: 640, max: 960 },
+                        height: { ideal: 480, max: 720 },
+                        frameRate: { ideal: 20, max: 24 },
+                        facingMode: 'user',
+                    },
                     audio: false,
                 });
                 if (cancelled) return;
@@ -110,12 +136,18 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             if (!source) return;
             if (source instanceof HTMLVideoElement && (source.readyState < 2 || !source.videoWidth)) return;
             if (source instanceof HTMLImageElement && (!source.complete || !source.naturalWidth)) return;
+            const now = performance.now();
+            if (sourceMode === 'camera' && now - lastDetectAtRef.current < DETECT_INTERVAL_MS) {
+                paintOverlay();
+                return;
+            }
+            lastDetectAtRef.current = now;
             busyRef.current = true;
             try {
                 const next = await detectFaceLandmarks(
                     source,
                     sourceMode === 'image' ? 'IMAGE' : 'VIDEO',
-                    performance.now(),
+                    now,
                 );
                 if (!cancelled) publish(next);
             } finally {
@@ -139,15 +171,10 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             cancelled = true;
             window.cancelAnimationFrame(frame);
         };
-    }, [engineReady, imageToken, imageUrl, sourceMode]);
+    }, [engineReady, imageToken, imageUrl, paintOverlay, publish, sourceMode]);
 
     useEffect(() => {
-        const render = () => {
-            if (!overlayRef.current) return;
-            const media = sourceMode === 'image' ? imageRef.current : videoRef.current;
-            const objectFit = media ? getComputedStyle(media).objectFit : 'cover';
-            drawFaceOverlay(overlayRef.current, latestRef.current, objectFit);
-        };
+        const render = () => paintOverlay();
         render();
         const observer = new ResizeObserver(render);
         if (overlayRef.current) observer.observe(overlayRef.current);
@@ -156,7 +183,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             observer.disconnect();
             window.removeEventListener('resize', render);
         };
-    }, [result, sourceMode]);
+    }, [paintOverlay, sourceMode]);
 
     const hud = !engineReady
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
@@ -176,7 +203,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                             className={sourceMode === 'camera' ? 'is-active' : ''}
                             onClick={() => {
                                 setSourceMode('camera');
-                                publish(null);
+                                publish(null, true);
                             }}
                         >
                             摄像头

@@ -1,4 +1,189 @@
+.camera-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    background: #020617;
+    overflow: hidden;
+}
+
+.camera-video-wrapper {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
 .camera-container.source-camera .camera-video,
 .camera-container.source-demo .camera-video {
     object-fit: cover;
+}
+
+.camera-video {
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.demo-image {
+    background: #020617;
+}
+
+.camera-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.camera-source-panel {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 3;
+    width: min(520px, calc(100% - 96px));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+    color: #f8fafc;
+    pointer-events: none;
+}
+
+.source-segment,
+.demo-source-tools {
+    pointer-events: auto;
+}
+
+.source-segment {
+    width: fit-content;
+    display: inline-grid;
+    grid-template-columns: repeat(2, auto);
+    gap: 2px;
+    padding: 3px;
+    background: rgba(2, 6, 23, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 8px;
+}
+
+.source-segment button,
+.demo-file-button {
+    border: 0;
+    color: #dbeafe;
+    background: transparent;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.source-segment button {
+    padding: 8px 10px;
+}
+
+.source-segment button.is-active {
+    color: #082f49;
+    background: #bae6fd;
+}
+
+.demo-source-tools {
+    flex-basis: 100%;
+    width: min(100%, 520px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(2, 6, 23, 0.68);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+}
+
+.demo-file-button {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    min-height: 30px;
+    padding: 8px 10px;
+    color: #ecfeff;
+    background: rgba(20, 184, 166, 0.18);
+    border: 1px solid rgba(94, 234, 212, 0.32);
+}
+
+.demo-file-button input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.demo-image-name {
+    min-width: 0;
+    max-width: 100%;
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.camera-error {
+    height: 100%;
+    color: #fecaca;
+    padding: 24px;
+    font-size: 1rem;
+    text-align: center;
+    display: grid;
+    gap: 12px;
+    place-items: center;
+    place-content: center;
+    background: #111827;
+}
+
+.camera-error p {
+    margin: 0;
+    max-width: 28rem;
+    line-height: 1.5;
+}
+
+.camera-error-action {
+    border: none;
+    border-radius: 8px;
+    background: #38bdf8;
+    color: #082f49;
+    padding: 0.55rem 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.camera-hud {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    width: min(520px, calc(100% - 36px));
+    color: #f8fafc;
+    background: rgba(2, 6, 23, 0.68);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: grid;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.camera-hud strong {
+    font-size: 0.95rem;
+}
+
+.camera-hud span {
+    color: #cbd5e1;
+    font-size: 0.78rem;
 }

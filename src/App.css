@@ -30,38 +30,6 @@
     font-weight: 750;
 }
 
-.app-header-side {
-    display: grid;
-    gap: 10px;
-    justify-items: end;
-}
-
-.mode-segment {
-    display: inline-grid;
-    grid-template-columns: repeat(2, auto);
-    gap: 2px;
-    padding: 3px;
-    background: rgba(2, 6, 23, 0.55);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 8px;
-}
-
-.mode-segment button {
-    border: 0;
-    padding: 8px 12px;
-    border-radius: 6px;
-    color: #dbeafe;
-    background: transparent;
-    font-size: 0.82rem;
-    font-weight: 750;
-    cursor: pointer;
-}
-
-.mode-segment button.is-active {
-    color: #082f49;
-    background: #bae6fd;
-}
-
 .app-note {
     margin: 0;
     max-width: 42rem;

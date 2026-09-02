@@ -15,8 +15,19 @@ if (!fs.existsSync(wasmSrc)) {
 
 fs.mkdirSync(wasmDst, { recursive: true });
 fs.mkdirSync(path.dirname(modelDst), { recursive: true });
-fs.cpSync(wasmSrc, wasmDst, { recursive: true });
-console.log(`copied wasm -> ${path.relative(root, wasmDst)}`);
+const wasmFiles = [
+    'vision_wasm_internal.js',
+    'vision_wasm_internal.wasm',
+    'vision_wasm_nosimd_internal.js',
+    'vision_wasm_nosimd_internal.wasm',
+];
+for (const name of wasmFiles) {
+    fs.copyFileSync(path.join(wasmSrc, name), path.join(wasmDst, name));
+}
+for (const entry of fs.readdirSync(wasmDst)) {
+    if (!wasmFiles.includes(entry)) fs.rmSync(path.join(wasmDst, entry), { force: true });
+}
+console.log(`copied wasm -> ${path.relative(root, wasmDst)} (${wasmFiles.join(', ')})`);
 
 if (!fs.existsSync(modelDst) || fs.statSync(modelDst).size < 1_000_000) {
     const response = await fetch(modelUrl);

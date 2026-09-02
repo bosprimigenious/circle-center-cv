@@ -55,7 +55,14 @@ const source = await import('node:fs/promises').then((fs) => fs.readFile(
 ));
 if (source.includes('FaceDetector.createFromOptions')) failures.push('landmarker.ts still uses Face Detector');
 if (!source.includes('outputFaceBlendshapes: true')) failures.push('blendshapes not requested');
-if (!source.includes('numFaces: 4')) failures.push('multi-face not enabled');
+if (!source.includes('numFaces: 1')) failures.push('camera path must use numFaces: 1 (Windows smoothing + cheaper inference)');
+if (source.includes('numFaces: 4')) failures.push('numFaces: 4 still enabled; too heavy for Windows Pages');
+const overlay = await import('node:fs/promises').then((fs) => fs.readFile(
+    new URL('../src/face/overlay.ts', import.meta.url),
+    'utf8',
+));
+if (overlay.includes('FACE_LANDMARKS_TESSELATION')) failures.push('overlay still strokes full tessellation mesh');
+if (overlay.includes('../components/CameraView')) failures.push('overlay still imports CameraView');
 if (!source.includes("mode: RunningMode = 'VIDEO'") && !source.includes("= 'VIDEO'")) {
     failures.push('camera landmarker must default to VIDEO at create time');
 }

@@ -11,7 +11,6 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "postinstall": "node scripts/copy-mediapipe.mjs",
-    "verify:center": "node scripts/verify-ring-energy-center.mjs",
     "verify:face": "node scripts/verify-face-landmarks.mjs"
   },
   "dependencies": {

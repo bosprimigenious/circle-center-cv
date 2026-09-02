@@ -5,14 +5,6 @@ export type OverlayFitMapping = {
     offsetY: number;
 };
 
-/**
- * Map analysis-frame pixels onto the overlay canvas the same way CSS
- * object-fit places the <video>/<img> inside the wrapper.
- *
- * The expanded fringe page uses contain.
- * Using cover math on a contain image systematically inflates any
- * off-center ring, which looks like a persistent center offset.
- */
 export const getObjectFitMapping = (
     containerWidth: number,
     containerHeight: number,

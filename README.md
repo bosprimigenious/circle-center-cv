@@ -1,41 +1,32 @@
-# 圆心定位 + 圆环识别 + 人脸网格
+# 人脸网格 478 点
 
-从 [interferometer-cv](https://github.com/bosprimigenious/interferometer-cv) 抽出的浏览器 CV 演示：
+浏览器里跑 MediaPipe Face Landmarker：**478** 个 3D 点（468 网格 + 10 虹膜），不是 6 点 Face Detector，也不是身份识别。
 
-- **圆环**：圆心定位 + 同心圆环识别（classical CV）
-- **人脸网格**：MediaPipe Face Landmarker，**478** 个 3D 点（468 网格 + 10 虹膜），不是 6 点 Face Detector
+在线演示：https://bosprimigenious.github.io/circle-center-cv/
 
-在线演示（GitHub Pages）：https://bosprimigenious.github.io/circle-center-cv/
+摄像头需要 HTTPS；Pages 本身是 HTTPS。
 
-摄像头需要 HTTPS；Pages 站点本身是 HTTPS。浏览器会问摄像头权限。
-
-## 开源仓库
+## 仓库
 
 - 代码：https://github.com/bosprimigenious/circle-center-cv
 - 许可：MIT
-- 部署：push `main` 后 `.github/workflows/pages.yml` 构建并发布 Pages
+- 部署：push `main` 后 `.github/workflows/pages.yml` 发 GitHub Pages
 
-不含：倾角 CNN、3D 调仪、多智能体、波长拟合、作业后台。
+圆环 / 圆心定位已从本仓库删除，那套 classical CV 仍在 [interferometer-cv](https://github.com/bosprimigenious/interferometer-cv)。
 
-## 人脸网格（不是 6 点检测）
+## 模型
 
-`Face Detector` 只有框 + 6 个点，覆盖不够。本仓库接的是 **MediaPipe Face Landmarker**：
+`face_landmarker.task`（float16，约 3.6MB）里三条网：
 
-- **478** 个 3D 关键点（468 网格 + 10 虹膜）
-- 分区：脸轮廓、眉、眼、唇、虹膜
-- 可选 52 个 blendshape
-
-页面顶部切到「人脸网格」。摄像头或上传人脸图。权重 `public/models/face_landmarker.task` 和 WASM `public/mediapipe/wasm` 在 `npm install` 时下载/拷贝，不进 git。
-
-## 圆环算法
-
-| 模块 | 路径 | 做什么 |
+| 子模型 | 输入 | 作用 |
 |---|---|---|
-| 圆心定位 | `src/components/CameraView/analysis/centerEstimation.ts` | 高通能量质心、径向振荡打分、同心圆法向投票、几何中心、最小二乘径向拟合 |
-| 圆环识别 | `src/components/CameraView/analysis/ringDetection.ts` | 红通道采样 → 圆心 → 径向剖面峰谷 → 亮/暗环交替序列 |
-| 圆度 | `src/components/CameraView/analysis/ringAnalysis.ts` | 一阶亮环亮度、圆周相干性 |
-| 叠加 | `src/components/CameraView/analysis/overlay.ts` | 圆心十字 + 亮/暗环 |
-| 时序 | `src/components/CameraView/analysis/stabilizer.ts` + `kalmanFilter.ts` | 圆心 Kalman + 环半径 EMA |
+| BlazeFace short-range | 192×192 | 脸上有没有、粗框 |
+| FaceMesh-V2 | 256×256 crop | 478 点 |
+| Blendshape | 1×146×2 | 52 维表情系数 |
+
+权重和 WASM 在 `npm install` / CI `postinstall` 下载拷贝，不进 git。运行在用户浏览器 GPU（失败则 CPU），没有云端推理。
+
+为 Windows 核显：摄像头 ideal 640×480、检测约 15 fps、叠加只画五官轮廓（不画 ~2600 条三角网格）、`numFaces=1`、DPR 上限 1.25。Chrome 请打开硬件加速。
 
 ## 本地运行
 
@@ -51,7 +42,6 @@ npm run dev
 ## 验证
 
 ```bash
-npm run verify:center   # 亮斑不得抢走圆环圆心；半圆弧圆心可在画外
-npm run verify:face     # 478 点拓扑：网格 + 虹膜 + 五官分区
-npm run build           # tsc + vite
+npm run verify:face
+npm run build
 ```

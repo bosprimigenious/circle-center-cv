@@ -108,12 +108,12 @@ const landmarkerOptions = (mode: RunningMode, delegate: 'GPU' | 'CPU', modelAsse
         delegate,
     },
     runningMode: mode,
-    numFaces: 4,
+    numFaces: 1,
     minFaceDetectionConfidence: 0.5,
     minFacePresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
     outputFaceBlendshapes: true,
-    outputFacialTransformationMatrixes: true,
+    outputFacialTransformationMatrixes: false,
 });
 
 const createLandmarker = async (delegate: 'GPU' | 'CPU', mode: RunningMode) => {
