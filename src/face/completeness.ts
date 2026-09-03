@@ -1,7 +1,9 @@
-import type { FaceBox, FaceLandmarkPoint, FaceQuality } from './types.ts';
+import { handOverFace as palmOverFace } from '../hand/geometry.ts';
+import type { DetectedHand } from '../hand/types.ts';
 import type { IrisGaze } from '../gaze/types.ts';
 import { isVisible } from '../pose/shoulders.ts';
-import { POSE_LEFT_WRIST, POSE_RIGHT_WRIST, type PosePoint } from '../pose/types.ts';
+import { POSE_FINGER_INDICES, POSE_LEFT_WRIST, POSE_RIGHT_WRIST, type PosePoint } from '../pose/types.ts';
+import type { FaceBox, FaceLandmarkPoint, FaceQuality } from './types.ts';
 
 /** 框贴边或关键点出画，视为脸不全。不加新模型。 */
 export const FACE_EDGE = 0.025;
@@ -54,10 +56,11 @@ export const wristOverFace = (
     poseLandmarks: PosePoint[] | null | undefined,
 ) => {
     if (!box || !poseLandmarks || poseLandmarks.length < 17) return false;
-    for (const index of [POSE_LEFT_WRIST, POSE_RIGHT_WRIST]) {
-        const wrist = poseLandmarks[index];
-        if (!isVisible(wrist)) continue;
-        if (pointInBox(wrist.x, wrist.y, box, HAND_PAD)) return true;
+    const indices = [POSE_LEFT_WRIST, POSE_RIGHT_WRIST, ...POSE_FINGER_INDICES];
+    for (const index of indices) {
+        const point = poseLandmarks[index];
+        if (!isVisible(point)) continue;
+        if (pointInBox(point.x, point.y, box, HAND_PAD)) return true;
     }
     return false;
 };
@@ -68,6 +71,7 @@ export const faceQualityFrom = (input: {
     headYaw?: number | null;
     iris?: Pick<IrisGaze, 'left' | 'right'> | null;
     poseLandmarks?: PosePoint[] | null;
+    hands?: DetectedHand[] | null;
 }): FaceQuality => {
     const lm = input.landmarks;
     const box = input.box;
@@ -98,7 +102,7 @@ export const faceQualityFrom = (input: {
     const bothEyesOk = leftEyeOk && rightEyeOk;
     const profile = (input.headYaw != null && Math.abs(input.headYaw) > PROFILE_YAW)
         || (leftEyeOk !== rightEyeOk);
-    const handOverFace = wristOverFace(box, input.poseLandmarks);
+    const handOverFace = wristOverFace(box, input.poseLandmarks) || palmOverFace(box, input.hands);
     const tiny = box.width * box.height < TINY_AREA;
     const pitchTrusted = !clipped && !clipTop && !clipBottom && chinIn && foreheadIn && !handOverFace && !tiny;
     const yawTrusted = !clipLeft && !clipRight && !handOverFace && !tiny && outFrac < 0.35;

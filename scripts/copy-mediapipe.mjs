@@ -9,8 +9,10 @@ const modelDst = path.join(root, 'public', 'models', 'face_landmarker.task');
 const modelUrl = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 const gazeDst = path.join(root, 'public', 'models', 'mobileone_s0_gaze.onnx');
 const gazeUrl = 'https://github.com/yakhyo/gaze-estimation/releases/download/weights/mobileone_s0_gaze.onnx';
-const poseDst = path.join(root, 'public', 'models', 'pose_landmarker_lite.task');
-const poseUrl = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+const poseDst = path.join(root, 'public', 'models', 'pose_landmarker_full.task');
+const poseUrl = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+const handDst = path.join(root, 'public', 'models', 'hand_landmarker.task');
+const handUrl = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const ortSrc = path.join(root, 'node_modules', 'onnxruntime-web', 'dist');
 const ortDst = path.join(root, 'public', 'ort');
 const ortFiles = [
@@ -83,15 +85,20 @@ if (!fs.existsSync(gazeDst) || fs.statSync(gazeDst).size < 1_000_000) {
     console.log(`keep existing gaze model ${path.relative(root, gazeDst)}`);
 }
 
-if (!fs.existsSync(poseDst) || fs.statSync(poseDst).size < 1_000_000) {
-    const response = await fetch(poseUrl);
+const downloadIfMissing = async (dst, url, label) => {
+    if (fs.existsSync(dst) && fs.statSync(dst).size >= 1_000_000) {
+        console.log(`keep existing ${label} ${path.relative(root, dst)}`);
+        return;
+    }
+    const response = await fetch(url);
     if (!response.ok) {
-        console.error(`download failed: ${response.status} ${response.statusText} ${poseUrl}`);
+        console.error(`download failed: ${response.status} ${response.statusText} ${url}`);
         process.exit(1);
     }
     const buffer = Buffer.from(await response.arrayBuffer());
-    fs.writeFileSync(poseDst, buffer);
-    console.log(`downloaded pose model ${buffer.length} bytes -> ${path.relative(root, poseDst)}`);
-} else {
-    console.log(`keep existing pose model ${path.relative(root, poseDst)}`);
-}
+    fs.writeFileSync(dst, buffer);
+    console.log(`downloaded ${label} ${buffer.length} bytes -> ${path.relative(root, dst)}`);
+};
+
+await downloadIfMissing(poseDst, poseUrl, 'pose');
+await downloadIfMissing(handDst, handUrl, 'hand');

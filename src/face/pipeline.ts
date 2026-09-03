@@ -2,6 +2,8 @@ import { detectFaceLandmarks, warmupFaceLandmarker } from './landmarker';
 import { resetGazeFuse } from '../gaze/fuse';
 import { estimateGazeFromBox, warmupGazeEstimator } from '../gaze/l2cs';
 import type { L2csGaze } from '../gaze/types';
+import { detectHandLandmarks, warmupHandLandmarker } from '../hand/landmarker';
+import type { DetectedHands } from '../hand/types';
 import { detectPoseLandmarks, warmupPoseLandmarker } from '../pose/landmarker';
 import { shouldersFromPose } from '../pose/shoulders';
 import type { DetectedPose } from '../pose/types';
@@ -13,6 +15,7 @@ export type RunningMode = 'IMAGE' | 'VIDEO';
 export type FrameDetect = {
     face: FaceFrameResult;
     pose: DetectedPose;
+    hands: DetectedHands;
     l2cs: L2csGaze | null;
     l2csAgeMs: number;
 };
@@ -34,11 +37,11 @@ export const resetPipelineCache = () => {
 
 export const warmupVisionPipeline = async () => {
     await warmupFaceLandmarker();
-    await Promise.all([warmupPoseLandmarker(), warmupGazeEstimator()]);
+    await Promise.all([warmupPoseLandmarker(), warmupHandLandmarker(), warmupGazeEstimator()]);
 };
 
 /**
- * 同一帧并行：Face 478 + Pose 33（肩）+ MobileGaze。
+ * 同一帧并行：Face 478 + Pose 33（full 肩肘腕髋）+ Hand 21×2 + MobileGaze。
  * L2CS 依赖人脸框，图片模式等它结束；视频模式不挡下一帧，沿用最近一次。
  */
 export const detectFrame = async (
@@ -46,9 +49,10 @@ export const detectFrame = async (
     mode: RunningMode,
     timestampMs = performance.now(),
 ): Promise<FrameDetect> => {
-    const [face, poseRaw] = await Promise.all([
+    const [face, poseRaw, hands] = await Promise.all([
         detectFaceLandmarks(source, mode, timestampMs),
         detectPoseLandmarks(source, mode, timestampMs),
+        detectHandLandmarks(source, mode, timestampMs),
     ]);
     const nose = face.faces[0]?.landmarks[1];
     const pose: DetectedPose = {
@@ -88,6 +92,7 @@ export const detectFrame = async (
     return {
         face,
         pose,
+        hands,
         l2cs: lastL2cs,
         l2csAgeMs: lastL2cs ? timestampMs - lastL2csResolvedAt : Number.POSITIVE_INFINITY,
     };

@@ -2,6 +2,7 @@ import type { CheatSnapshot } from '../cheat/types';
 import type { FatigueLive } from '../fatigue/types';
 import type { HeadPose } from '../gaze/headPose';
 import type { GazeOverlay } from '../gaze/types';
+import type { DetectedHands } from '../hand/types';
 import type { LookLive } from '../look/types';
 import type { DetectedPose } from '../pose/types';
 import type { AvSyncLive } from '../avsync/types';
@@ -80,6 +81,7 @@ export type FaceFrameResult = {
     cheat?: CheatSnapshot | null;
     gaze?: GazeOverlay | null;
     pose?: DetectedPose | null;
+    hands?: DetectedHands | null;
     fatigue?: FatigueLive | null;
     look?: LookLive | null;
     speech?: SpeechLive | null;

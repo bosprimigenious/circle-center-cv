@@ -93,11 +93,13 @@ if (!faceView.includes('FatigueSession')) failures.push('FaceView missing Fatigu
 if (!faceView.includes('LookSession')) failures.push('FaceView missing LookSession');
 if (!faceView.includes('SpeechSession')) failures.push('FaceView missing SpeechSession');
 if (!faceView.includes('AvSyncSession')) failures.push('FaceView missing AvSyncSession');
-if (!faceView.includes('疲劳')) failures.push('FaceView HUD must show 疲劳');
+if (!faceView.includes('眼部')) failures.push('FaceView HUD must show 眼部');
 if (!overlay.includes('drawOrbitBox')) failures.push('overlay missing 眼眶 boxes');
 if (!overlay.includes('drawIrisEllipse')) failures.push('overlay missing iris ellipse');
 if (!overlay.includes('drawMappedRay')) failures.push('overlay missing gaze rays');
 if (!overlay.includes('drawPoseOverlay')) failures.push('overlay missing shoulder/pose drawing');
+if (!overlay.includes('drawHandOverlay')) failures.push('overlay missing hand 21-point drawing');
+if (!faceView.includes('手21')) failures.push('FaceView HUD must mention 手21');
 
 if (failures.length) {
     console.error('verify-face-landmarks: FAIL');

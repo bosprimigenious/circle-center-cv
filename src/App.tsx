@@ -79,6 +79,7 @@ export default function App() {
         const quality = faceResult?.quality ?? null;
         const gaze = faceResult?.gaze ?? null;
         const shoulders = faceResult?.pose?.shoulders ?? null;
+        const hands = faceResult?.hands ?? null;
         const lookLive = faceResult?.look ?? null;
         const speechLive = faceResult?.speech ?? null;
         const avLive = faceResult?.avsync ?? null;
@@ -125,6 +126,27 @@ export default function App() {
                     { label: '肩 yaw 基线', value: formatNum(live.shoulderYawBase) },
                     { label: 'Δdrop', value: formatVs(live.shoulderDropDelta, THRESHOLDS.SHOULDER_DROP_DELTA), className: (live.shoulderDropDelta ?? 0) > THRESHOLDS.SHOULDER_DROP_DELTA ? 'is-warn' : '' },
                     { label: 'Δ肩 yaw', value: formatVs(live.shoulderYawDelta != null ? Math.abs(live.shoulderYawDelta) : null, THRESHOLDS.SHOULDER_YAW_DELTA), className: Math.abs(live.shoulderYawDelta ?? 0) > THRESHOLDS.SHOULDER_YAW_DELTA ? 'is-warn' : '' },
+                    { label: '肘 vis L/R', value: formatPair(shoulders?.leftElbow?.visibility, shoulders?.rightElbow?.visibility, 2) },
+                    { label: '腕 vis L/R', value: formatPair(shoulders?.leftWrist?.visibility, shoulders?.rightWrist?.visibility, 2) },
+                    { label: '髋 vis L/R', value: formatPair(shoulders?.leftHip?.visibility, shoulders?.rightHip?.visibility, 2) },
+                    { label: '髋宽', value: formatNum(shoulders?.hipWidth) },
+                    { label: '躯干 drop', value: formatNum(shoulders?.torsoDrop) },
+                    { label: '躯干 roll', value: formatNum(shoulders?.torsoRoll) },
+                    { label: '抬手 L/R', value: formatPair(shoulders?.leftRaise, shoulders?.rightRaise), className: (shoulders?.leftRaise ?? 0) > 0.05 || (shoulders?.rightRaise ?? 0) > 0.05 ? 'is-warn' : '' },
+                    { label: 'Pose 指尖', value: String(shoulders?.poseFingers ?? 0) },
+                ],
+            },
+            {
+                title: '手',
+                rows: [
+                    { label: '手数', value: String(hands?.hands.length ?? 0) },
+                    { label: '左右', value: hands?.hands.length
+                        ? hands.hands.map((hand) => `${hand.handedness === 'Left' ? '左' : hand.handedness === 'Right' ? '右' : hand.handedness} ${hand.landmarks.length}`).join(' · ')
+                        : '0' },
+                    { label: '掌心 1 x/y', value: hands?.hands[0] ? formatPair(hands.hands[0].palm.x, hands.hands[0].palm.y) : '—' },
+                    { label: '掌心 2 x/y', value: hands?.hands[1] ? formatPair(hands.hands[1].palm.x, hands.hands[1].palm.y) : '—' },
+                    { label: '手挡脸', value: formatBit(live.handOverFace), className: live.handOverFace ? 'is-danger' : '' },
+                    { label: '引擎', value: hands?.engine ?? '—' },
                 ],
             },
             {
@@ -192,22 +214,30 @@ export default function App() {
                 ],
             },
             {
-                title: '疲劳',
+                title: '眼部',
                 rows: [
+                    { label: 'EAR L/R', value: formatPair(fatLive?.earLeft, fatLive?.earRight) },
                     { label: 'EAR / 阈', value: formatPair(fatLive?.ear ?? live.ear, fatLive?.earThreshold) },
                     { label: 'EAR 睁眼基线', value: formatNum(fatLive?.earOpen) },
-                    { label: 'ΔEAR', value: fatLive?.ear != null
-                        ? formatNum(fatLive.ear - fatLive.earThreshold)
-                        : '—' },
+                    { label: 'ΔEAR', value: formatVs(
+                        fatLive?.earDrop,
+                        (fatLive?.earOpen ?? 0) * (1 - FATIGUE_THRESHOLDS.SQUINT_EAR_RATIO) || 0.08,
+                    ), className: fatLive?.squintNotes ? 'is-warn' : '' },
+                    { label: '左右差', value: formatVs(fatLive?.earAsym, FATIGUE_THRESHOLDS.EAR_ASYM), className: fatLive?.earAsymFlag ? 'is-warn' : '' },
                     { label: '眼裂 min', value: formatNum(fatLive?.orbitAspect) },
                     { label: '眼裂阈', value: formatNum(FATIGUE_THRESHOLDS.ORBIT_SLIT) },
                     { label: '眨眼系数', value: formatNum(fatLive?.eyeBlink, 2) },
                     { label: '虹膜半径 / 基线', value: formatPair(fatLive?.irisRadius, fatLive?.irisBaseline, 4) },
-                    { label: '闭眼', value: `${formatBit(fatLive?.eyesClosed ?? null)} · ${formatNum(fatLive?.closedSec, 2)}s`, className: fatLive?.eyesClosed ? 'is-warn' : '' },
-                    { label: 'PERCLOS', value: formatPct(fatLive?.perclos ?? null), className: ratioClass(fatLive?.perclos, 0.2, 0.12) },
-                    { label: '眨眼/分 · n', value: `${formatNum(fatLive?.blinkPerMin, 1)} · ${fatLive?.blinkCount ?? 0}` },
-                    { label: '哈欠 s', value: `${formatNum(fatLive?.yawnSec, 2)} · ${formatBit(fatLive?.yawn ?? null)}` },
-                    { label: '视线模糊', value: formatBit(fatLive?.gazeBlurry ?? null), className: fatLive?.gazeBlurry ? 'is-warn' : '' },
+                    { label: '眯眼看稿', value: `${formatBit(fatLive?.squintNotes ?? null)} · ${formatNum(fatLive?.squintSec, 2)}s`, className: fatLive?.squintNotes ? 'is-warn' : '' },
+                    { label: '闭眼离镜', value: `${formatBit(fatLive?.eyesOffCam ?? null)} · ${formatNum(fatLive?.closedSec, 2)}s`, className: fatLive?.eyesOffCam ? 'is-danger' : fatLive?.eyesClosed ? 'is-warn' : '' },
+                    { label: '虹膜被挡', value: formatBit(fatLive?.irisOccluded ?? null), className: fatLive?.irisOccluded ? 'is-warn' : '' },
+                    { label: '闭眼占比', value: formatPct(fatLive?.perclos ?? null), className: ratioClass(fatLive?.perclos, FATIGUE_THRESHOLDS.PERCLOS_OFFCAM, FATIGUE_THRESHOLDS.PERCLOS_WARN) },
+                    { label: '眨眼/分 · n', value: `${formatNum(fatLive?.blinkPerMin, 1)} · ${fatLive?.blinkCount ?? 0}`, className: fatLive?.blinkSparse || fatLive?.blinkBurst ? 'is-warn' : '' },
+                    { label: '眨眼过稀', value: formatBit(fatLive?.blinkSparse ?? null), className: fatLive?.blinkSparse ? 'is-warn' : '' },
+                    { label: '眨眼过密', value: formatBit(fatLive?.blinkBurst ?? null), className: fatLive?.blinkBurst ? 'is-warn' : '' },
+                    { label: '凝视无眨眼', value: `${formatBit(fatLive?.stare ?? null)} · ${formatNum(fatLive?.stareSec, 2)}s`, className: fatLive?.stare ? 'is-warn' : '' },
+                    { label: 'IBI', value: formatNum(fatLive?.ibiSec, 2) },
+                    { label: '射线不可用', value: formatBit(fatLive?.gazeBlurry ?? null) },
                 ],
             },
             {
@@ -283,19 +313,28 @@ export default function App() {
     const fatigue = faceResult?.fatigue ?? null;
     const fatigueRows = useMemo(() => {
         if (!fatigue) return [];
+        const squintDrop = (fatigue.earOpen ?? 0) * (1 - FATIGUE_THRESHOLDS.SQUINT_EAR_RATIO) || 0.08;
         return [
             { label: '状态', value: fatigue.label, className: fatigue.level === 'danger' ? 'is-danger' : fatigue.level === 'warn' ? 'is-warn' : 'is-ok' },
             { label: '原因', value: fatigue.reasons.length ? fatigue.reasons.join(' / ') : '无' },
+            { label: 'EAR L/R', value: formatPair(fatigue.earLeft, fatigue.earRight) },
             { label: 'EAR / 阈', value: `${formatNum(fatigue.ear)} / ${formatNum(fatigue.earThreshold)}` },
             { label: 'EAR 睁眼基线', value: formatNum(fatigue.earOpen) },
+            { label: 'ΔEAR', value: formatVs(fatigue.earDrop, squintDrop), className: fatigue.squintNotes ? 'is-warn' : '' },
+            { label: '左右差', value: formatVs(fatigue.earAsym, FATIGUE_THRESHOLDS.EAR_ASYM), className: fatigue.earAsymFlag ? 'is-warn' : '' },
             { label: '眼裂 / 阈', value: `${formatNum(fatigue.orbitAspect)} / ${formatNum(FATIGUE_THRESHOLDS.ORBIT_SLIT)}` },
             { label: '眨眼系数', value: formatNum(fatigue.eyeBlink, 2) },
             { label: '虹膜半径 / 基线', value: `${formatNum(fatigue.irisRadius, 4)} / ${formatNum(fatigue.irisBaseline, 4)}` },
-            { label: '闭眼', value: `${formatBit(fatigue.eyesClosed)} · ${formatNum(fatigue.closedSec, 2)}s`, className: fatigue.eyesClosed ? 'is-warn' : '' },
-            { label: 'PERCLOS', value: formatPct(fatigue.perclos), className: ratioClass(fatigue.perclos, 0.2, 0.12) },
-            { label: '眨眼/分 · n', value: `${formatNum(fatigue.blinkPerMin, 1)} · ${fatigue.blinkCount}` },
-            { label: '哈欠 s', value: `${formatNum(fatigue.yawnSec, 2)} · ${formatBit(fatigue.yawn)}` },
-            { label: '视线模糊', value: formatBit(fatigue.gazeBlurry), className: fatigue.gazeBlurry ? 'is-warn' : '' },
+            { label: '眯眼看稿', value: `${formatBit(fatigue.squintNotes)} · ${formatNum(fatigue.squintSec, 2)}s`, className: fatigue.squintNotes ? 'is-warn' : '' },
+            { label: '闭眼离镜', value: `${formatBit(fatigue.eyesOffCam)} · ${formatNum(fatigue.closedSec, 2)}s`, className: fatigue.eyesOffCam ? 'is-danger' : fatigue.eyesClosed ? 'is-warn' : '' },
+            { label: '虹膜被挡', value: formatBit(fatigue.irisOccluded), className: fatigue.irisOccluded ? 'is-warn' : '' },
+            { label: '闭眼占比', value: formatPct(fatigue.perclos), className: ratioClass(fatigue.perclos, FATIGUE_THRESHOLDS.PERCLOS_OFFCAM, FATIGUE_THRESHOLDS.PERCLOS_WARN) },
+            { label: '眨眼/分 · n', value: `${formatNum(fatigue.blinkPerMin, 1)} · ${fatigue.blinkCount}`, className: fatigue.blinkSparse || fatigue.blinkBurst ? 'is-warn' : '' },
+            { label: '眨眼过稀', value: formatBit(fatigue.blinkSparse), className: fatigue.blinkSparse ? 'is-warn' : '' },
+            { label: '眨眼过密', value: formatBit(fatigue.blinkBurst), className: fatigue.blinkBurst ? 'is-warn' : '' },
+            { label: '凝视无眨眼', value: `${formatBit(fatigue.stare)} · ${formatNum(fatigue.stareSec, 2)}s`, className: fatigue.stare ? 'is-warn' : '' },
+            { label: 'IBI', value: formatNum(fatigue.ibiSec, 2) },
+            { label: '射线不可用', value: formatBit(fatigue.gazeBlurry) },
         ];
     }, [fatigue]);
 
@@ -329,11 +368,11 @@ export default function App() {
         <div className="app-shell">
             <header className="app-header">
                 <div>
-                    <p className="app-kicker">检测 · 478 点 · 肩膀 · 融合视线 · 第二屏 · 说话 · 音画 · 疲劳</p>
-                    <h1>人脸 478 + Pose 肩 + 几何×L2CS 融合</h1>
+                    <p className="app-kicker">检测 · 478 点 · Pose33 · 手21 · 融合视线 · 第二屏 · 说话 · 音画 · 眼部</p>
+                    <h1>人脸 478 + Pose 肩肘腕 + 手21 + 几何×L2CS 融合</h1>
                 </div>
                 <p className="app-note">
-                    同一帧并行三个模型：Face Landmarker 478（含 4×4 头部位姿矩阵）、Pose Landmarker lite（肩点 11/12）、MobileGaze L2CS。视线 = 头矩阵 + 虹膜眼内转与 L2CS 融合。转头 / 第二屏看驻留。说话看 MAR；音画把麦克风/MP4 音轨 RMS 和口型包络做交叉相关。不含文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
+                    同一帧并行四个模型：Face Landmarker 478（含 4×4 头部位姿矩阵）、Pose Landmarker full（33 点：肩肘腕指髋）、Hand Landmarker（每手 21 点，最多两只）、MobileGaze L2CS。低头 / 转头仍用肩 11/12 的 drop/yaw（B3 口径不变）；肘腕髋只加量化。手挡脸用腕/指尖/掌。视线 = 头矩阵 + 虹膜眼内转与 L2CS 融合。不含文本 LLM1、声纹、人脸 1:1、ASR。文件不上传。
                 </p>
             </header>
             <main className="app-main">
@@ -409,7 +448,7 @@ export default function App() {
                     ) : (
                         <p className="panel-empty">摄像头会要麦克风；本地 MP4 走音轨。RMS 和口型交叉相关，不做 ASR。</p>
                     )}
-                    <h2>疲劳检测</h2>
+                    <h2>眼部读稿</h2>
                     {fatigue ? (
                         <dl>
                             {fatigueRows.map((row) => (
@@ -420,7 +459,7 @@ export default function App() {
                             ))}
                         </dl>
                     ) : (
-                        <p className="panel-empty">等待画面后按帧累计 EAR / PERCLOS。</p>
+                        <p className="panel-empty">等待画面后按帧累计 EAR / 眨眼间隔 / 闭眼占比。不计入 B3。</p>
                     )}
                     <h2>本帧网格</h2>
                     <dl>

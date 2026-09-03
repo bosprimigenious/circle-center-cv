@@ -1,5 +1,6 @@
-import { FaceLandmarker } from '@mediapipe/tasks-vision';
+import { FaceLandmarker, HandLandmarker } from '@mediapipe/tasks-vision';
 import type { GazeOverlay, GazeRay, NormalizedBox } from '../gaze/types';
+import type { DetectedHands } from '../hand/types';
 import { isVisible } from '../pose/shoulders';
 import { UPPER_BODY_CONNECTIONS, type DetectedPose } from '../pose/types';
 import { getObjectFitMapping, mapFramePointToOverlay, type OverlayFitMapping } from './overlayFit';
@@ -167,6 +168,41 @@ const drawPoseOverlay = (
     }
 };
 
+const drawHandOverlay = (
+    ctx: CanvasRenderingContext2D,
+    hands: DetectedHands,
+    frameWidth: number,
+    frameHeight: number,
+    mapping: OverlayFitMapping,
+) => {
+    const mapPt = (x: number, y: number) => mapFramePointToOverlay(x * frameWidth, y * frameHeight, mapping);
+    const connections = HandLandmarker.HAND_CONNECTIONS ?? [];
+    for (const hand of hands.hands) {
+        const isLeft = hand.handedness.toLowerCase() === 'left';
+        ctx.strokeStyle = isLeft ? 'rgba(251, 146, 60, 0.9)' : 'rgba(167, 139, 250, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (const link of connections) {
+            const from = hand.landmarks[link.start];
+            const to = hand.landmarks[link.end];
+            if (!from || !to) continue;
+            const a = mapPt(from.x, from.y);
+            const b = mapPt(to.x, to.y);
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = isLeft ? '#fb923c' : '#a78bfa';
+        for (const point of hand.landmarks) {
+            const mapped = mapPt(point.x, point.y);
+            ctx.fillRect(mapped.x - 1.5, mapped.y - 1.5, 3, 3);
+        }
+        const palm = mapPt(hand.palm.x, hand.palm.y);
+        ctx.fillStyle = '#fff7ed';
+        ctx.fillRect(palm.x - 2.5, palm.y - 2.5, 5, 5);
+    }
+};
+
 const drawGazeOverlay = (
     ctx: CanvasRenderingContext2D,
     gaze: GazeOverlay,
@@ -234,7 +270,7 @@ export const drawFaceOverlay = (
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    if (!result || (result.faces.length === 0 && !result.pose?.landmarks.length)) {
+    if (!result || (result.faces.length === 0 && !result.pose?.landmarks.length && !result.hands?.hands.length)) {
         if (result?.error) {
             ctx.fillStyle = 'rgba(254, 202, 202, 0.92)';
             ctx.font = '600 13px system-ui, sans-serif';
@@ -244,8 +280,9 @@ export const drawFaceOverlay = (
     }
 
     const mapping = getObjectFitMapping(width, height, result.frameWidth, result.frameHeight, objectFit);
-    if (result.pose && result.faces.length === 0) {
-        drawPoseOverlay(ctx, result.pose, result.frameWidth, result.frameHeight, mapping);
+    if (result.faces.length === 0) {
+        if (result.pose) drawPoseOverlay(ctx, result.pose, result.frameWidth, result.frameHeight, mapping);
+        if (result.hands) drawHandOverlay(ctx, result.hands, result.frameWidth, result.frameHeight, mapping);
     }
 
     result.faces.forEach((face, faceIndex) => {
@@ -269,6 +306,9 @@ export const drawFaceOverlay = (
         drawPointLattice(ctx, points);
         if (faceIndex === 0 && result.pose) {
             drawPoseOverlay(ctx, result.pose, result.frameWidth, result.frameHeight, mapping);
+        }
+        if (faceIndex === 0 && result.hands) {
+            drawHandOverlay(ctx, result.hands, result.frameWidth, result.frameHeight, mapping);
         }
         if (result.gaze && faceIndex === 0) {
             drawGazeOverlay(ctx, result.gaze, result.frameWidth, result.frameHeight, mapping);

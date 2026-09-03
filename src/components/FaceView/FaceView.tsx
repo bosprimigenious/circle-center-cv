@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { eyeAspectRatio, mouthAspectRatio } from '../../cheat/geometry.ts';
+import { eyeAspectRatio, eyeAspectRatios, mouthAspectRatio } from '../../cheat/geometry.ts';
 import { CheatSession } from '../../cheat/session';
 import { FatigueSession } from '../../fatigue/session';
 import { fuseGaze } from '../../gaze/fuse';
-import { LookSession } from '../../look/session';
+import { lookingDownFrom, LookSession } from '../../look/session';
 import { SpeechSession } from '../../speech/session';
 import { AvSyncSession } from '../../avsync/session';
 import { AudioTap } from '../../avsync/tap';
@@ -20,6 +20,7 @@ import {
     rayFromEye,
 } from '../../gaze/iris';
 import { getGazeEngineLabel, subscribeGazeEngineStatus } from '../../gaze/l2cs';
+import { getHandEngineLabel, subscribeHandEngineStatus } from '../../hand/landmarker';
 import { getPoseEngineLabel, subscribePoseEngineStatus } from '../../pose/landmarker';
 import './FaceView.css';
 
@@ -83,10 +84,11 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
     useEffect(() => {
         const started = performance.now();
         const syncEngine = () => {
-            setEngine(`${getFaceEngineLabel()} · ${getPoseEngineLabel()} · ${getGazeEngineLabel()}`);
+            setEngine(`${getFaceEngineLabel()} · ${getPoseEngineLabel()} · ${getHandEngineLabel()} · ${getGazeEngineLabel()}`);
         };
         const unsubscribeFace = subscribeFaceEngineStatus(syncEngine);
         const unsubscribePose = subscribePoseEngineStatus(syncEngine);
+        const unsubscribeHand = subscribeHandEngineStatus(syncEngine);
         const unsubscribeGaze = subscribeGazeEngineStatus(syncEngine);
         const tick = window.setInterval(() => {
             setLoadElapsed(Math.max(0, Math.round((performance.now() - started) / 1000)));
@@ -102,6 +104,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         return () => {
             unsubscribeFace();
             unsubscribePose();
+            unsubscribeHand();
             unsubscribeGaze();
             window.clearInterval(tick);
         };
@@ -235,7 +238,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
             lastDetectAtRef.current = now;
             busyRef.current = true;
             try {
-                const { face: next, pose, l2cs, l2csAgeMs } = await detectFrame(
+                const { face: next, pose, hands, l2cs, l2csAgeMs } = await detectFrame(
                     source,
                     sourceMode === 'image' ? 'IMAGE' : 'VIDEO',
                     now,
@@ -252,6 +255,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     headYaw: face?.headPose?.yaw ?? null,
                     iris,
                     poseLandmarks: pose.landmarks,
+                    hands: hands.hands,
                 });
                 const origin = iris.left && iris.right
                     ? { x: (iris.left.center.x + iris.right.center.x) / 2, y: (iris.left.center.y + iris.right.center.y) / 2 }
@@ -273,6 +277,12 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     .map((box) => box.height / box.width);
                 const irisRadii = [iris.left?.radius, iris.right?.radius]
                     .filter((value): value is number => typeof value === 'number');
+                const ears = face
+                    ? eyeAspectRatios(face.landmarks, {
+                        personLeft: quality.leftEyeOk,
+                        personRight: quality.rightEyeOk,
+                    })
+                    : { left: null, right: null };
                 const ear = face
                     ? eyeAspectRatio(face.landmarks, {
                         personLeft: quality.leftEyeOk,
@@ -295,6 +305,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     face?.headPose ? 'face-matrix' : null,
                     fusedGaze.fused ? 'fused' : null,
                     pose.shoulders ? 'pose-shoulders' : null,
+                    hands.hands.length ? 'hand-21' : null,
                 ].filter(Boolean).join('+');
                 const cheat = cheatSessionRef.current.ingest({
                     tSec,
@@ -314,14 +325,19 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 const fatigue = fatigueSessionRef.current.ingest({
                     tSec,
                     ear: quality.handOverFace ? null : ear,
-                    mar,
-                    jawOpen: quality.handOverFace ? null : jawOpen,
+                    earLeft: quality.handOverFace ? null : ears.left,
+                    earRight: quality.handOverFace ? null : ears.right,
                     eyeBlink: quality.handOverFace ? null : eyeBlink,
                     irisRadius: quality.handOverFace || !irisRadii.length
                         ? null
                         : irisRadii.reduce((sum, value) => sum + value, 0) / irisRadii.length,
                     orbitAspect: quality.handOverFace ? null : orbitAspect,
                     headDown: cheat.live.headDown,
+                    lookingDown: lookingDownFrom({
+                        headDown: cheat.live.headDown,
+                        fusedPitch: fusedGaze.fused?.pitch ?? null,
+                    }),
+                    gazeAway: cheat.live.gazeAway,
                 });
                 const look = lookSessionRef.current.ingest({
                     tSec,
@@ -388,12 +404,13 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         cheat,
                         gaze,
                         pose,
+                        hands,
                         fatigue,
                         look,
                         speech,
                         avsync,
                         quality,
-                        engine: `${next.engine} · ${pose.engine}`,
+                        engine: `${next.engine} · ${pose.engine} · ${hands.engine}`,
                     });
                 }
             } finally {
@@ -435,7 +452,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
         ? `正在加载 Face Landmarker… ${loadElapsed}s`
         : result
             ? result.faceCount > 0
-                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · ${result.quality && result.quality.label !== '完整' ? `${result.quality.label} · ` : ''}${result.look?.label ?? result.gaze?.look ?? ''} · ${result.speech?.label ?? ''} · ${result.avsync?.label ?? ''} · ${result.fatigue?.label ?? ''}`
+                ? `${result.faceCount} 张脸 · ${result.landmarkCount} 点 · 肩 ${result.pose?.shoulders ? '有' : '无'} · 手 ${result.hands?.hands.length ?? 0} · ${result.quality && result.quality.label !== '完整' ? `${result.quality.label} · ` : ''}${result.look?.label ?? result.gaze?.look ?? ''} · ${result.speech?.label ?? ''} · ${result.avsync?.label ?? ''} · ${result.fatigue?.label ?? ''}`
                 : result.error ?? '未检测到人脸'
             : '等待画面…';
 
@@ -600,7 +617,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                 <canvas ref={overlayRef} className="camera-overlay" />
                 <div className="camera-hud">
                     <strong>{hud}</strong>
-                    <span>{engine} · 478 + 肩点 + 融合视线 + 第二屏 + 说话 + 音画 + 疲劳</span>
+                    <span>{engine} · 478 + Pose33 + 手21 + 融合视线 + 第二屏 + 说话 + 音画 + 眼部</span>
                 </div>
             </div>
         </div>

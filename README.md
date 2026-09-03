@@ -1,10 +1,11 @@
 # 人脸网格 478 点 + 几何×L2CS 融合视线
 
-浏览器里同一帧并行三个模型：
+浏览器里同一帧并行四个模型：
 
 1. **MediaPipe Face Landmarker 478**（468 网格 + 10 虹膜）。打开 `outputFacialTransformationMatrixes`，从 4×4 取头 yaw/pitch/roll。不改拓扑、不换权重。
-2. **MediaPipe Pose Landmarker lite**（33 点）。用肩点 11/12 作低头 / 转头参照；近景看不见肩时回退脸部 pitch/yaw。
-3. **MobileGaze MobileOne-S0**（L2CS-Net 系，Gaze360 预训练 ONNX，约 4.8MB）。吃 478 框出的人脸 crop，输出视线 yaw / pitch。视频模式约 180ms 节流。
+2. **MediaPipe Pose Landmarker full**（BlazePose 33 点）。低头 / 转头仍用肩 11/12 的 drop/yaw（B3 口径不变）。肘 13/14、腕 15/16、指 17–22、髋 23/24 只加量化（抬手、躯干、挡脸）。lite 肩点更飘，full 同一套点、权重更大。
+3. **MediaPipe Hand Landmarker**（每手 21 点，最多两只）。掌心 / 指尖挡脸比只看 Pose 腕点密。
+4. **MobileGaze MobileOne-S0**（L2CS-Net 系，Gaze360 预训练 ONNX，约 4.8MB）。吃 478 框出的人脸 crop，输出视线 yaw / pitch。视频模式约 180ms 节流。
 
 视线精度走混合，不加第四个神经网络：
 
@@ -47,13 +48,13 @@ S0 的 12.58° 是 Gaze360 论文口径，不是本页现场 MAE。融合没有�
 - 嘴在动几乎没声音 → 对口型无声；有声口型不动 → 有声無口型。
 - 不做 ASR，不把音频送出浏览器。麦克风被拒时回退成只跑口型。
 
-疲劳检测不另加模型，用已有 478 几何：低头（肩线）、EAR 闭眼、PERCLOS（滚动窗口闭眼占比）、眼裂变窄 → 视线模糊（虹膜被眼皮挡住，射线不画）。口径对齐 Soukupová EAR、[e-candeloro/Driver-State-Detection](https://github.com/e-candeloro/Driver-State-Detection)（MIT）的 PERCLOS、以及浏览器连续闭眼计时。
+眼部读稿不另加模型，用已有 478 几何：眯眼看稿（低头 + EAR/眼裂变窄）、闭眼离镜（连续闭眼 ≥1.5s）、眨眼过稀/过密、凝视无眨眼（IBI）、虹膜被挡、左右 EAR 不对称。闭眼占比仍按 PERCLOS 窗口计。射线在闭眼或虹膜被挡时不画。口径对齐 Soukupová EAR、[e-candeloro/Driver-State-Detection](https://github.com/e-candeloro/Driver-State-Detection)（MIT）的 PERCLOS，语义按面试作弊而不是疲劳。
 
 在线演示：https://bosprimigenious.github.io/circle-center-cv/
 
 摄像头需要 HTTPS；Pages 本身是 HTTPS。本地 MP4 在浏览器里逐帧跑，文件不上传。建议 H.264。
 
-视觉反作弊通道（遮挡 / 静止 / 无人脸 / 低头 / 转头 / 虹膜+融合视线 / 嘴部 MAR）按 P2 脚本阈值计 B3-*。侧视优先用融合 yaw，没有融合再退 L2CS。脸出框、单眼、手挡脸只降级本帧几何（虹膜射线不画、低头不采信残缺 pitch），**不新开 B3**。疲劳、转头/第二屏、说话/口型是单独栏，**不计入 B3**。不含文本 LLM1、声纹、人脸 1:1、ASR。
+视觉反作弊通道（遮挡 / 静止 / 无人脸 / 低头 / 转头 / 虹膜+融合视线 / 嘴部 MAR）按 P2 脚本阈值计 B3-*。侧视优先用融合 yaw，没有融合再退 L2CS。脸出框、单眼、手挡脸只降级本帧几何（虹膜射线不画、低头不采信残缺 pitch），**不新开 B3**。眼部读稿、转头/第二屏、说话/口型是单独栏，**不计入 B3**。不含文本 LLM1、声纹、人脸 1:1、ASR。
 
 ## 仓库
 
@@ -73,7 +74,7 @@ S0 的 12.58° 是 Gaze360 论文口径，不是本页现场 MAE。融合没有�
 | FaceMesh-V2 | 256×256 crop | 478 点 |
 | Blendshape | 1×146×2 | 52 维表情系数 |
 
-第二模型 `pose_landmarker_lite.task`（BlazePose GHUM，约 5.5MB，Google）。第三模型 `mobileone_s0_gaze.onnx`（约 4.8MB，[yakhyo/gaze-estimation](https://github.com/yakhyo/gaze-estimation) MIT，L2CS-Net / Gaze360）。浏览器里用 onnxruntime-web WASM 推理；GitHub Pages 无 COOP，强制单线程。Pose / L2CS 加载失败时 478 仍可用。
+第二模型 `pose_landmarker_full.task`（BlazePose GHUM full，约 9MB，Google）。第三模型 `hand_landmarker.task`（掌检测 + 21 点，约 7.5MB，Google）。第四模型 `mobileone_s0_gaze.onnx`（约 4.8MB，[yakhyo/gaze-estimation](https://github.com/yakhyo/gaze-estimation) MIT，L2CS-Net / Gaze360）。浏览器里用 onnxruntime-web WASM 推理；GitHub Pages 无 COOP，强制单线程。Pose / Hand / L2CS 加载失败时 478 仍可用。没加 YOLO-pose / RTMPose / MoveNet：点数更少或不能进本仓库的 WASM Pages。
 
 权重和 WASM 在 `npm install` / CI `postinstall` 下载拷贝，不进 git。没有云端推理。
 

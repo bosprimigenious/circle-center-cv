@@ -48,7 +48,7 @@ export const mouthAspectRatio = (lm: FaceLandmarkPoint[]) => {
     return dist(upper, lower) / width;
 };
 
-export const eyeAspectRatio = (
+export const eyeAspectRatios = (
     lm: FaceLandmarkPoint[],
     eyes?: { personLeft?: boolean; personRight?: boolean },
 ) => {
@@ -60,9 +60,18 @@ export const eyeAspectRatio = (
         if (horizontal < 1e-6) return null;
         return (dist(p2, p6) + dist(p3, p5)) / (2 * horizontal);
     };
-    const personRight = eyes?.personRight !== false ? oneEye([33, 160, 158, 133, 153, 144]) : null;
-    const personLeft = eyes?.personLeft !== false ? oneEye([362, 385, 387, 263, 373, 380]) : null;
-    const vals = [personRight, personLeft].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    return {
+        left: eyes?.personLeft !== false ? oneEye([362, 385, 387, 263, 373, 380]) : null,
+        right: eyes?.personRight !== false ? oneEye([33, 160, 158, 133, 153, 144]) : null,
+    };
+};
+
+export const eyeAspectRatio = (
+    lm: FaceLandmarkPoint[],
+    eyes?: { personLeft?: boolean; personRight?: boolean },
+) => {
+    const { left, right } = eyeAspectRatios(lm, eyes);
+    const vals = [right, left].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     if (!vals.length) return null;
     return vals.reduce((sum, value) => sum + value, 0) / vals.length;
 };

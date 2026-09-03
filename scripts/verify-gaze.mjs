@@ -336,8 +336,8 @@ if (!faceView.includes('LookSession')) throw new Error('FaceView missing LookSes
 if (!faceView.includes('faceQualityFrom')) throw new Error('FaceView missing faceQualityFrom');
 
 const pipeline = await readFile(new URL('../src/face/pipeline.ts', import.meta.url), 'utf8');
-if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseLandmarks')) {
-    throw new Error('pipeline must call face and pose together');
+if (!pipeline.includes('detectFaceLandmarks') || !pipeline.includes('detectPoseLandmarks') || !pipeline.includes('detectHandLandmarks')) {
+    throw new Error('pipeline must call face, pose and hand together');
 }
 if (!pipeline.includes('Promise.all')) throw new Error('pipeline must run models in parallel');
 if (!pipeline.includes('l2csAgeMs')) throw new Error('pipeline must expose L2CS age for fusion');
@@ -349,18 +349,22 @@ if (!app.includes('MobileGaze')) throw new Error('App missing MobileGaze copy');
 if (!app.includes('融合 yaw / pitch°')) throw new Error('App missing fused gaze metric');
 if (!app.includes('融合外观权重')) throw new Error('App missing fusion appearance weight');
 if (!app.includes('肩 drop / yaw')) throw new Error('App missing quantitative shoulder metrics');
+if (!app.includes('肘 vis L/R')) throw new Error('App missing elbow visibility');
+if (!app.includes('抬手 L/R')) throw new Error('App missing arm raise');
 if (!app.includes('Δdrop')) throw new Error('App missing shoulder drop delta');
 if (!app.includes('低头来源')) throw new Error('App missing head-down source');
 if (!app.includes('转头来源')) throw new Error('App missing head-turn source');
 if (!app.includes('EAR 睁眼基线')) throw new Error('App missing fatigue EAR baseline');
 if (!app.includes('左 gazeX / Y')) throw new Error('App missing per-eye iris gaze');
 if (!app.includes('L2CS 龄')) throw new Error('App missing L2CS age');
-if (!app.includes('疲劳检测')) throw new Error('App missing 疲劳检测 panel');
-if (!app.includes('PERCLOS')) throw new Error('App missing PERCLOS');
+if (!app.includes('眼部读稿')) throw new Error('App missing 眼部读稿 panel');
+if (!app.includes('眯眼看稿')) throw new Error('App missing 眯眼看稿');
+if (!app.includes('闭眼占比')) throw new Error('App missing 闭眼占比');
 
 const copy = await readFile(new URL('./copy-mediapipe.mjs', import.meta.url), 'utf8');
 if (!copy.includes('mobileone_s0_gaze.onnx')) throw new Error('postinstall missing MobileGaze download');
-if (!copy.includes('pose_landmarker_lite.task')) throw new Error('postinstall missing Pose lite download');
+if (!copy.includes('pose_landmarker_full.task')) throw new Error('postinstall missing Pose full download');
+if (!copy.includes('hand_landmarker.task')) throw new Error('postinstall missing Hand Landmarker download');
 if (!copy.includes('ort-wasm-simd-threaded.wasm')) throw new Error('postinstall missing ORT wasm copy');
 
 console.log('verify-gaze: pass');
