@@ -336,6 +336,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     lookingDown: lookingDownFrom({
                         headDown: cheat.live.headDown,
                         fusedPitch: fusedGaze.fused?.pitch ?? null,
+                        screenPitch: cheat.live.screenPitch,
                     }),
                     gazeAway: cheat.live.gazeAway,
                 });
@@ -346,6 +347,7 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                     headTurn: cheat.live.headTurn,
                     headDown: cheat.live.headDown,
                     fusedPitch: fusedGaze.fused?.pitch ?? null,
+                    screenPitch: cheat.live.screenPitch,
                     gazeBlurry: fatigue.gazeBlurry,
                     gazeUnreliable: quality.handOverFace || (!quality.irisTrusted && !quality.l2csTrusted),
                 });
@@ -389,6 +391,10 @@ export default function FaceView({ onFrameResult }: FaceViewProps) {
                         quality.irisTrusted ? iris.gazeY : null,
                         quality.l2csTrusted ? l2cs : null,
                         fusedGaze.fused,
+                        {
+                            yaw: cheat.live.screenYaw,
+                            pitch: cheat.live.screenPitch,
+                        },
                     ),
                     blurry: fatigue.gazeBlurry || !quality.irisTrusted,
                     fused: fusedGaze.fused,

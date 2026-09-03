@@ -30,6 +30,7 @@ export type LookFrameInput = {
     headTurn: boolean;
     headDown: boolean;
     fusedPitch: number | null;
+    screenPitch?: number | null;
     gazeBlurry: boolean;
     gazeUnreliable?: boolean;
 };

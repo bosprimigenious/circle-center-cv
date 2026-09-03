@@ -11,6 +11,11 @@ export type CheatLive = {
     l2csPitch: number | null;
     fusedYaw: number | null;
     fusedPitch: number | null;
+    screenYaw: number | null;
+    screenPitch: number | null;
+    screenOrigin: 'default' | 'baseline' | null;
+    relFusedYaw: number | null;
+    relFusedPitch: number | null;
     irisLeftR: number | null;
     irisRightR: number | null;
     mar: number | null;

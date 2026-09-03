@@ -10,6 +10,7 @@ import {
 } from '../src/gaze/iris.ts';
 import { gazeXFromLandmarks, gazeYFromLandmarks } from '../src/cheat/geometry.ts';
 import { describeLook, fusedIrisRay, rayFromEye } from '../src/gaze/iris.ts';
+import { CAMERA_TO_SCREEN_PITCH } from '../src/gaze/screen.ts';
 import { APPEARANCE_WEIGHT, fuseGazeInstant, geometricGazeFrom, resetGazeFuse } from '../src/gaze/fuse.ts';
 import { eulerFromMatrix, yawRotationMatrix } from '../src/gaze/headPose.ts';
 import { shouldersFromPose } from '../src/pose/shoulders.ts';
@@ -74,11 +75,14 @@ const rightRay = rayFromEye(lookingRight.right);
 assert.ok(rightRay && rightRay.dx > 0, `right iris ray should go right, dx=${rightRay?.dx}`);
 const fused = fusedIrisRay(lookingRight);
 assert.ok(fused && fused.dx > 0, 'fused iris ray should follow the eyes');
-assert.equal(describeLook(0, 0, null), '看镜头');
+assert.equal(describeLook(0, 0, null), '看屏');
 assert.equal(describeLook(0.3, 0.2, null), '看右下');
 assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }), '看右');
-assert.equal(describeLook(null, null, { yaw: 0.6, pitch: 0 }), '看左');
-assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }, { yaw: 0.6, pitch: 0 }), '看左');
+assert.equal(describeLook(null, null, { yaw: 0.6, pitch: 0 }, null, { yaw: 0, pitch: 0 }), '看左');
+assert.equal(describeLook(0.3, 0, { yaw: 0, pitch: 0 }, { yaw: 0.6, pitch: 0 }, { yaw: 0, pitch: 0 }), '看左');
+assert.equal(describeLook(null, null, null, { yaw: 0, pitch: CAMERA_TO_SCREEN_PITCH }), '看屏');
+assert.equal(describeLook(null, null, null, { yaw: 0, pitch: 0 }), '看上');
+assert.equal(describeLook(null, null, null, { yaw: 0, pitch: CAMERA_TO_SCREEN_PITCH - 0.25 }), '看下');
 
 const identity = eulerFromMatrix({ data: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] });
 assert.ok(identity && Math.abs(identity.yaw) < 1e-9 && Math.abs(identity.pitch) < 1e-9 && Math.abs(identity.roll) < 1e-9, 'identity matrix is zero pose');
@@ -360,6 +364,7 @@ if (!app.includes('L2CS 龄')) throw new Error('App missing L2CS age');
 if (!app.includes('眼部读稿')) throw new Error('App missing 眼部读稿 panel');
 if (!app.includes('眯眼看稿')) throw new Error('App missing 眯眼看稿');
 if (!app.includes('闭眼占比')) throw new Error('App missing 闭眼占比');
+if (!app.includes('屏原点 pitch°')) throw new Error('App missing screen-origin pitch');
 
 const copy = await readFile(new URL('./copy-mediapipe.mjs', import.meta.url), 'utf8');
 if (!copy.includes('mobileone_s0_gaze.onnx')) throw new Error('postinstall missing MobileGaze download');

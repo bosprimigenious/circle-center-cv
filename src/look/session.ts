@@ -1,11 +1,13 @@
 import type { GazeDirection } from '../cheat/types.ts';
+import { CAMERA_TO_SCREEN_PITCH } from '../gaze/screen.ts';
 import type { LookFrameInput, LookKind, LookLevel, LookLive } from './types.ts';
 
 /**
  * 转头 / 第二屏：不加新模型。
  * 第二屏摄像头看不见，只能从「世界视线长时间停在同一侧」推断。
- * 转头但仍看镜头 = 头转了、融合视线仍朝镜头（补偿性眼动 / VOR）。
+ * 转头但仍看屏 = 头转了、融合视线仍朝屏中（补偿性眼动 / VOR）。
  * 低头看稿不叫第二屏。扫视不够驻留也不叫。
+ * 看屏 ≠ 看摄像头光轴：笔记本摄像头在屏幕上方。
  */
 export const LOOK_THRESHOLDS = {
     DWELL_SEC: 2.0,
@@ -27,7 +29,7 @@ type Hold = {
 
 const emptyLive = (): LookLive => ({
     kind: 'camera',
-    label: '看镜头',
+    label: '看屏',
     direction: null,
     asideSec: 0,
     headTurnSec: 0,
@@ -42,10 +44,12 @@ const sideLabel = (direction: GazeDirection | null) => (
     direction === 'left' ? '左' : direction === 'right' ? '右' : ''
 );
 
-export const lookingDownFrom = (input: Pick<LookFrameInput, 'headDown' | 'fusedPitch'>) => (
-    input.headDown
-    || (input.fusedPitch != null && input.fusedPitch < -LOOK_THRESHOLDS.PITCH_NOTES_RAD)
-);
+export const lookingDownFrom = (input: Pick<LookFrameInput, 'headDown' | 'fusedPitch' | 'screenPitch'>) => {
+    if (input.headDown) return true;
+    if (input.fusedPitch == null) return false;
+    const origin = input.screenPitch ?? CAMERA_TO_SCREEN_PITCH;
+    return input.fusedPitch - origin < -LOOK_THRESHOLDS.PITCH_NOTES_RAD;
+};
 
 export class LookSession {
     private aside: Run | null = null;
@@ -92,7 +96,7 @@ export class LookSession {
         if (secondScreen) reasons.push(side ? `侧向驻留${side} ${asideSec.toFixed(1)}s` : `侧向驻留 ${asideSec.toFixed(1)}s`);
         else if (kind === 'aside') reasons.push(side ? `侧视${side}` : '侧视');
         else if (kind === 'glance') reasons.push(side ? `扫视${side}` : '扫视');
-        if (headTurnButCamera) reasons.push('转头但仍看镜头');
+        if (headTurnButCamera) reasons.push('转头但仍看屏');
         else if (input.headTurn && !notes) reasons.push('转头');
 
         let level: LookLevel = 'ok';
@@ -104,8 +108,8 @@ export class LookSession {
             : kind === 'second_screen' ? `疑似看第二屏${side ? `（${side}）` : ''}`
             : kind === 'aside' ? `侧视${side}`
             : kind === 'glance' ? `扫视${side}`
-            : kind === 'head_turn_camera' ? '转头但仍看镜头'
-            : '看镜头'
+            : kind === 'head_turn_camera' ? '转头但仍看屏'
+            : '看屏'
         );
 
         this.last = {

@@ -21,14 +21,18 @@ const runFor = (session, from, to, step, extra) => {
 };
 
 assert.equal(lookingDownFrom({ headDown: true, fusedPitch: 0 }), true);
-assert.equal(lookingDownFrom({ headDown: false, fusedPitch: -LOOK_THRESHOLDS.PITCH_NOTES_RAD - 0.01 }), true);
+assert.equal(lookingDownFrom({ headDown: false, fusedPitch: -0.16 }), false, 'looking at screen center is not notes');
+assert.equal(lookingDownFrom({
+    headDown: false,
+    fusedPitch: -0.16 - LOOK_THRESHOLDS.PITCH_NOTES_RAD - 0.01,
+}), true);
 assert.equal(lookingDownFrom({ headDown: false, fusedPitch: 0 }), false);
 
 const camera = new LookSession();
 const cameraLive = runFor(camera, 0, 1.0, 0.1, {});
 assert.equal(cameraLive.kind, 'camera');
 assert.equal(cameraLive.secondScreen, false);
-assert.equal(cameraLive.label, '看镜头');
+assert.equal(cameraLive.label, '看屏');
 
 const glance = new LookSession();
 const glanceLive = runFor(glance, 0, 0.4, 0.05, { gazeAway: true, gazeDirection: 'left' });
@@ -60,7 +64,7 @@ const vorLive = runFor(vor, 0, 1.2, 0.1, { headTurn: true, gazeAway: false });
 assert.equal(vorLive.kind, 'head_turn_camera');
 assert.equal(vorLive.headTurnButCamera, true);
 assert.equal(vorLive.secondScreen, false);
-assert.equal(vorLive.label, '转头但仍看镜头');
+assert.equal(vorLive.label, '转头但仍看屏');
 
 const notes = new LookSession();
 const notesLive = runFor(notes, 0, 3.0, 0.1, {
@@ -114,6 +118,7 @@ if (!faceView.includes('LookSession')) throw new Error('FaceView missing LookSes
 const app = await readFile(new URL('../src/App.tsx', import.meta.url), 'utf8');
 if (!app.includes('转头 / 第二屏')) throw new Error('App missing 转头 / 第二屏 panel');
 if (!app.includes('疑似第二屏')) throw new Error('App missing 疑似第二屏 metric');
+if (!app.includes('转头但仍看屏')) throw new Error('App missing 看屏 VOR label');
 
 const scoring = await readFile(new URL('../src/cheat/scoring.ts', import.meta.url), 'utf8');
 if (scoring.includes('second_screen') || scoring.includes('B3-8')) {

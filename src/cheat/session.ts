@@ -1,4 +1,5 @@
 import { describeLook, irisGazeFromLandmarks } from '../gaze/iris.ts';
+import { CAMERA_TO_SCREEN_PITCH, relativeGaze, screenOriginFrom } from '../gaze/screen.ts';
 import {
     brightnessAndGray,
     eyeAspectRatio,
@@ -187,6 +188,12 @@ export class CheatSession {
                 && Math.abs(sample.fused_yaw!) <= THRESHOLDS.L2CS_YAW_AWAY_RAD,
         );
         if (fusedPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) fusedPool = withFused;
+        let fusedPitchPool = fusedPool.filter((sample) => (
+            sample.fused_pitch != null
+            && sample.fused_pitch > CAMERA_TO_SCREEN_PITCH - 0.28
+            && sample.fused_pitch < 0.22
+        ));
+        if (fusedPitchPool.length < THRESHOLDS.BASELINE_MIN_SAMPLES) fusedPitchPool = [];
         const withL2cs = this.samples.filter((sample) => sample.l2cs_yaw != null);
         let l2csPool = withL2cs.filter(
             (sample) => sample.time <= THRESHOLDS.BASELINE_DURATION_SEC
@@ -199,6 +206,7 @@ export class CheatSession {
             gaze: median(pool.map((sample) => sample.gaze_x)),
             l2csYaw: median(l2csPool.map((sample) => sample.l2cs_yaw)),
             fusedYaw: median(fusedPool.map((sample) => sample.fused_yaw)),
+            fusedPitch: median(fusedPitchPool.map((sample) => sample.fused_pitch)),
             shoulderDrop: median(shoulderPool.map((sample) => sample.shoulder_drop)),
             shoulderYaw: median(shoulderPool.map((sample) => sample.shoulder_yaw)),
             poseOk: pool.length >= THRESHOLDS.BASELINE_MIN_SAMPLES && median(pool.map((sample) => sample.pose?.pitch)) != null,
@@ -328,6 +336,8 @@ export class CheatSession {
     ): CheatLive {
         const head = this.headDecision(pose, shoulders, baseline, quality);
         const gaze = this.gazeDecision(gazeX, l2cs?.yaw ?? null, fused?.yaw ?? null, baseline, quality);
+        const screen = screenOriginFrom(baseline);
+        const rel = relativeGaze(fused, screen);
         return {
             pitch: pose?.pitch ?? null,
             yaw: pose?.yaw ?? null,
@@ -337,6 +347,11 @@ export class CheatSession {
             l2csPitch: l2cs?.pitch ?? null,
             fusedYaw: fused?.yaw ?? null,
             fusedPitch: fused?.pitch ?? null,
+            screenYaw: screen.yaw,
+            screenPitch: screen.pitch,
+            screenOrigin: screen.source,
+            relFusedYaw: rel?.yaw ?? null,
+            relFusedPitch: rel?.pitch ?? null,
             irisLeftR: iris.left?.radius ?? null,
             irisRightR: iris.right?.radius ?? null,
             mar,
@@ -359,7 +374,7 @@ export class CheatSession {
                 : null,
             gazeAway: gaze.away,
             gazeDirection: gaze.direction,
-            gazeLook: describeLook(gazeX, gazeY, l2cs, fused),
+            gazeLook: describeLook(gazeX, gazeY, l2cs, fused, screen),
             mouthOpen: (mar != null && mar > 0.45) || (jawOpen != null && jawOpen > 0.35),
             shoulderVisible: shoulders != null,
             shoulderDrop: shoulders?.drop ?? null,

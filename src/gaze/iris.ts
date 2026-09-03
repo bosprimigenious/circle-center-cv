@@ -1,4 +1,5 @@
 import type { FaceLandmarkPoint } from '../face/types';
+import { CAMERA_TO_SCREEN_PITCH } from './screen.ts';
 import type { GazeRay, IrisEyeMeasure, IrisGaze, L2csGaze, NormalizedBox } from './types';
 
 /**
@@ -155,19 +156,29 @@ export const describeLook = (
     gazeY: number | null,
     l2cs: L2csGaze | null,
     fused: L2csGaze | null = null,
+    origin?: { yaw?: number | null; pitch?: number | null } | null,
 ): string => {
-    // 融合优先；否则虹膜，再 L2CS。符号与射线一致：dx=-sin(yaw)、dy=-sin(pitch)。
-    const x = fused
-        ? -Math.sin(fused.yaw)
-        : (gazeX ?? (l2cs ? -Math.sin(l2cs.yaw) : null));
-    const y = fused
-        ? -Math.sin(fused.pitch)
-        : (gazeY ?? (l2cs ? -Math.sin(l2cs.pitch) : null));
+    // 融合优先，再虹膜，再 L2CS。弧度视线相对屏中心；虹膜 0,0 不减原点。
+    // 符号与射线一致：dx=-sin(yaw)、dy=-sin(pitch)。
+    const yaw0 = origin?.yaw ?? 0;
+    const pitch0 = origin?.pitch ?? CAMERA_TO_SCREEN_PITCH;
+    let x: number | null = null;
+    let y: number | null = null;
+    if (fused) {
+        x = -Math.sin(fused.yaw - yaw0);
+        y = -Math.sin(fused.pitch - pitch0);
+    } else if (gazeX != null || gazeY != null) {
+        x = gazeX;
+        y = gazeY;
+    } else if (l2cs) {
+        x = -Math.sin(l2cs.yaw - yaw0);
+        y = -Math.sin(l2cs.pitch - pitch0);
+    }
     const parts: string[] = [];
     if (x != null && x < -0.08) parts.push('左');
     else if (x != null && x > 0.08) parts.push('右');
     if (y != null && y > 0.08) parts.push('下');
     else if (y != null && y < -0.08) parts.push('上');
-    if (!parts.length) return '看镜头';
+    if (!parts.length) return '看屏';
     return `看${parts.join('')}`;
 };

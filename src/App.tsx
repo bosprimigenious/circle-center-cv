@@ -201,7 +201,7 @@ export default function App() {
                     { label: '转头持续 s', value: formatNum(lookLive?.headTurnSec, 2), className: (lookLive?.headTurnSec ?? 0) >= 1 ? 'is-warn' : '' },
                     { label: '本帧转头', value: formatBit(live.headTurn), className: live.headTurn ? 'is-warn' : '' },
                     { label: '转头来源', value: live.headSource ?? '—' },
-                    { label: 'VOR 看镜头', value: formatBit(lookLive?.headTurnButCamera ?? null) },
+                    { label: 'VOR 看屏', value: formatBit(lookLive?.headTurnButCamera ?? null) },
                     { label: '2D yaw', value: `${formatNum(live.yaw)} · 基线 ${formatNum(live.yawBase)}` },
                     { label: 'Δyaw', value: formatVs(live.yawDelta != null ? Math.abs(live.yawDelta) : null, THRESHOLDS.YAW_TURN_DELTA), className: Math.abs(live.yawDelta ?? 0) > THRESHOLDS.YAW_TURN_DELTA ? 'is-warn' : '' },
                     { label: 'Δ肩 yaw', value: formatVs(live.shoulderYawDelta != null ? Math.abs(live.shoulderYawDelta) : null, THRESHOLDS.SHOULDER_YAW_DELTA), className: Math.abs(live.shoulderYawDelta ?? 0) > THRESHOLDS.SHOULDER_YAW_DELTA ? 'is-warn' : '' },
@@ -210,7 +210,9 @@ export default function App() {
                     { label: 'yaw 可信', value: formatBit(live.yawTrusted) },
                     { label: '本帧侧视', value: live.gazeAway ? `1 · ${live.gazeDirection ?? ''}` : '0', className: live.gazeAway ? 'is-warn' : '' },
                     { label: '侧向驻留 s', value: formatNum(lookLive?.asideSec, 2), className: (lookLive?.asideSec ?? 0) >= 2 ? 'is-danger' : (lookLive?.asideSec ?? 0) >= 0.8 ? 'is-warn' : '' },
-                    { label: '眼神看哪', value: live.gazeLook, className: live.gazeLook !== '看镜头' ? 'is-warn' : '' },
+                    { label: '屏原点 pitch°', value: `${formatDeg(live.screenPitch)} · ${live.screenOrigin ?? '—'}` },
+                    { label: '相对融合 pitch°', value: formatDeg(live.relFusedPitch) },
+                    { label: '眼神看哪', value: live.gazeLook, className: /左|右|下/.test(live.gazeLook) ? 'is-warn' : '' },
                 ],
             },
             {
@@ -270,7 +272,7 @@ export default function App() {
             { label: '原因', value: look.reasons.length ? look.reasons.join(' / ') : '无' },
             { label: '疑似第二屏', value: look.secondScreen ? `是 · ${dir}` : '否', className: look.secondScreen ? 'is-danger' : '' },
             { label: '侧向驻留', value: `${formatNum(look.asideSec, 1)}s`, className: look.asideSec >= 2 ? 'is-danger' : look.asideSec >= 0.8 ? 'is-warn' : '' },
-            { label: '转头但仍看镜头', value: look.headTurnButCamera ? '是' : '否' },
+            { label: '转头但仍看屏', value: look.headTurnButCamera ? '是' : '否' },
             { label: '转头持续', value: `${formatNum(look.headTurnSec, 1)}s`, className: look.headTurnSec >= 1 ? 'is-warn' : '' },
             { label: '低头看稿', value: look.notes ? '是' : '否', className: look.notes ? 'is-warn' : '' },
         ];
